@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Crumble — Delivery Feedback</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://script.google.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -278,6 +279,17 @@
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function q(type){ return (CFG.questions || []).find(x => x.type === type); }
   function ratingValue(){ const r = q('rating'); return r ? Number(answers[r.id]) || 0 : 0; }
+
+  // ─── config cache (instant first paint) ───────────────────────────────
+  // The backend is Apps Script, which can take 2-5s to wake up. Customers
+  // never wait on that: we paint immediately from the last config this
+  // browser saw (or the built-in default), fetch the live config in the
+  // background, and swap it in only if they haven't started answering.
+  const CACHE_KEY = 'crumble_form_cfg_' + FORM_ID;
+  function readCache(){ try{ const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; }catch(_){ return null; } }
+  function writeCache(cfg){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(cfg)); }catch(_){} }
+  function clearCache(){ try{ localStorage.removeItem(CACHE_KEY); }catch(_){} }
+  function sameConfig(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
 
   // ─── load config ──────────────────────────────────────────────────────
   async function loadConfig(){
@@ -623,16 +635,33 @@
       });
       return;
     }
-    const cfg = await loadConfig();
-    if(cfg.notFound){
+    const showNotFound = () => {
       document.getElementById('steps').innerHTML = '<div class="step active"><div class="eyebrow">Crumble</div><h2 class="title">This form isn\'t available.</h2><p style="color:var(--ink-muted);font-size:.9rem;">Please check the link you were given.</p></div>';
-      return;
+    };
+    const apply = cfg => {
+      CFG = cfg;
+      document.title = 'Crumble — ' + (CFG.name || 'Feedback');
+      buildSteps(); renderAll(); goTo(0);
+    };
+
+    // 1) paint right now from cache or built-in default
+    const initial = readCache() || (FORM_ID === 'delivery' ? DEFAULT_CONFIG : null);
+    if(initial) apply(initial);
+
+    // 2) fetch the live config in the background
+    const live = await loadConfig();
+    if(live.notFound){
+      clearCache();
+      if(!initial) showNotFound();            // unknown form, nothing to show
+      return;                                  // known form: keep serving what we have
     }
-    CFG = cfg;
-    document.title = 'Crumble — ' + (CFG.name || 'Feedback');
-    buildSteps();
-    renderAll();
-    goTo(0);
+    writeCache(live);
+    if(!initial){ apply(live); return; }       // first ever visit to a non-default form
+    // Only hot-swap while the customer is still on the welcome screen and
+    // hasn't typed anything -- never yank the form out from under them.
+    const ph = document.getElementById('phoneInput');
+    const untouched = current === 0 && (!ph || !ph.value);
+    if(untouched && !sameConfig(initial, live)) apply(live);
   })();
 </script>
 </body>
