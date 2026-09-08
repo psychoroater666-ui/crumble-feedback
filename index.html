@@ -218,6 +218,11 @@
   const FORM_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx0Zj6y3mM2biuuXuSuHf81zF8RJXI_WpXwcWUkVCxnJd8e_h-sqJ9wlDt-SjlKN0dL/exec';
   const FORM_TOKEN    = 'crumble-dlv-7Kq9pW2xN4mR8vL3sT6yB1zH5jF0cA';
   const FORM_ID       = (new URLSearchParams(location.search).get('f') || 'delivery').toLowerCase();
+  // Preview mode: the dashboard's Form Builder embeds this page and pushes
+  // the config being edited via postMessage. Nothing is submitted or
+  // geolocated in preview.
+  const PREVIEW       = new URLSearchParams(location.search).get('preview') === '1';
+  const PREVIEW_ORIGINS = ['https://dashboard.crumblesentinel.com'];
 
   const DEFAULT_CONFIG = {
     id: 'delivery',
@@ -506,6 +511,7 @@
     const b = q('branch');
     if(!b || geoRequested) return;
     geoRequested = true;
+    if(PREVIEW){ showBranchFallback(); return; }
     const hasCoords = (CFG.branches || []).some(x => typeof x.lat === 'number');
     if(navigator.geolocation && hasCoords){
       navigator.geolocation.getCurrentPosition(
@@ -567,6 +573,7 @@
 
   async function submitForm(){
     if(submitting) return;
+    if(PREVIEW){ goTo(steps.length - 1); return; }
     // required-check every question
     for(const qq of (CFG.questions || [])){
       if(!qq.required) continue;
@@ -602,6 +609,20 @@
 
   // ─── boot ─────────────────────────────────────────────────────────────
   (async function boot(){
+    if(PREVIEW){
+      document.getElementById('steps').innerHTML = '<div class="step active"><div class="detect-box" style="margin:10px auto;"><span class="detect-spinner"></span><span>Waiting for preview…</span></div></div>';
+      window.addEventListener('message', ev => {
+        if(PREVIEW_ORIGINS.indexOf(ev.origin) === -1) return;
+        const m = ev.data || {};
+        if(m.type !== 'crumble-form-preview' || !m.form) return;
+        const keep = CFG ? current : 0;
+        CFG = m.form; geoRequested = false; branchAutoAdvanceOff = true;
+        buildSteps(); renderAll();
+        goTo(m.reset ? 0 : Math.min(keep, steps.length - 1));
+        if(current > 0) showBranchFallback();
+      });
+      return;
+    }
     const cfg = await loadConfig();
     if(cfg.notFound){
       document.getElementById('steps').innerHTML = '<div class="step active"><div class="eyebrow">Crumble</div><h2 class="title">This form isn\'t available.</h2><p style="color:var(--ink-muted);font-size:.9rem;">Please check the link you were given.</p></div>';
