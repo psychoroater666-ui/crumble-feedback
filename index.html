@@ -173,17 +173,12 @@
   }
   .rating-circle.selected{ transform:scale(1.12); box-shadow:0 0 0 3px rgba(1,1,151,.15); }
   @media (prefers-reduced-motion: reduce){ .step{ animation:none !important; } }
-  .stamp-wrap{ margin-top:22px; width:100%; }
-  .scratch{ position:relative; width:100%; max-width:320px; margin:0 auto; height:120px; border-radius:16px; overflow:hidden; cursor:pointer; user-select:none; box-shadow:0 6px 18px rgba(1,1,151,.12); }
-  .scratch canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
-  .scratch-under{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg,#010197,#3B5BDB); color:#fff; padding:14px; text-align:center; }
-  .scratch-under b{ font-size:15px; font-weight:800; }
-  .scratch-under small{ font-size:12px; opacity:.9; }
-  .stamps{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
-  .stamp{ width:34px; height:34px; border-radius:50%; border:2px dashed #C9C6DA; display:flex; align-items:center; justify-content:center; font-size:15px; color:#C9C6DA; }
-  .stamp.on{ border-style:solid; border-color:#010197; background:#010197; color:#fff; }
-  .stamp-note{ font-size:12.5px; color:#6B6880; text-align:center; margin-top:10px; line-height:1.55; max-width:320px; margin-left:auto; margin-right:auto; }
-  .stamp-code{ display:inline-block; margin-top:8px; font:800 15px/1 ui-monospace,monospace; letter-spacing:1px; background:#FEF3C7; color:#92400E; border-radius:8px; padding:8px 12px; }
+  .stamp.pop{ animation: stampPop .5s cubic-bezier(.2,1.6,.3,1) both; }
+  @keyframes stampPop{ 0%{ transform:scale(0.2) rotate(-18deg); opacity:0; } 55%{ transform:scale(1.28) rotate(6deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
+  .confetti{ position:absolute; left:0; top:-30px; pointer-events:none; z-index:5; }
+  .scratch-under b{ animation: rewardIn .5s ease-out both; }
+  @keyframes rewardIn{ from{ transform:scale(.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .stamp.pop, .scratch-under b { animation:none !important; } }
 </style>
 </head>
 <body>
@@ -645,6 +640,43 @@
     host.appendChild(wrap);
     initScratch();
   }
+  // ── Reward celebration ────────────────────────────────────────────────
+  // Fires when the scratch panel is cleared: a short haptic pulse, the stamp
+  // thumping into place, and confetti only for a real reward. Canvas confetti
+  // is drawn once and torn down, so it costs nothing after a second.
+  function buzz(pattern){ try { if(navigator.vibrate) navigator.vibrate(pattern); } catch(e){} }
+  function celebrate(isReward){
+    buzz(isReward ? [18, 60, 18, 60, 34] : 22);
+    const stamps = document.querySelectorAll('.stamp.on');
+    const last = stamps[stamps.length - 1];
+    if(last){ last.classList.add('pop'); }
+    if(!isReward) return;
+    const box = document.querySelector('.stamp-wrap'); if(!box) return;
+    const cv = document.createElement('canvas');
+    cv.className = 'confetti'; box.style.position = 'relative'; box.appendChild(cv);
+    const w = box.clientWidth, h = 260, dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+    const colors = ['#010197', '#3B5BDB', '#F59E0B', '#EC4899', '#22D3EE', '#10B981'];
+    const bits = Array.from({ length: 70 }, () => ({
+      x: w / 2 + (Math.random() - .5) * 90, y: 40 + Math.random() * 20,
+      vx: (Math.random() - .5) * 5.5, vy: -5 - Math.random() * 5,
+      s: 4 + Math.random() * 5, r: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
+      c: colors[(Math.random() * colors.length) | 0]
+    }));
+    let frames = 0;
+    (function tick(){
+      frames++; ctx.clearRect(0, 0, w, h);
+      bits.forEach(b => {
+        b.vy += 0.22; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r);
+        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - frames / 95);
+        ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * 0.6); ctx.restore();
+      });
+      if(frames < 100) requestAnimationFrame(tick); else cv.remove();
+    })();
+  }
+
   function initScratch(){
     const box = document.getElementById('scratchBox'), cv = document.getElementById('scratchCanvas'); if(!cv) return;
     const r = box.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
@@ -665,10 +697,10 @@
       if(!cleared){
         try { const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let clear = 0, n = 0;
               for(let i = 3; i < d.length; i += 64){ n++; if(d[i] === 0) clear++; }
-              if(n && clear / n > 0.45){ cleared = true; cv.style.transition = 'opacity .4s'; cv.style.opacity = '0'; } } catch(err){}
+              if(n && clear / n > 0.45){ cleared = true; cv.style.transition = 'opacity .45s'; cv.style.opacity = '0'; celebrate(!!box.querySelector('.stamp-code')); } } catch(err){}
       }
     };
-    ['mousedown','touchstart'].forEach(ev => cv.addEventListener(ev, e => { drawing = true; scratch(e); }, { passive: false }));
+    ['mousedown','touchstart'].forEach(ev => cv.addEventListener(ev, e => { if(!drawing) buzz(8); drawing = true; scratch(e); }, { passive: false }));
     ['mousemove','touchmove'].forEach(ev => cv.addEventListener(ev, scratch, { passive: false }));
     ['mouseup','mouseleave','touchend'].forEach(ev => cv.addEventListener(ev, () => { drawing = false; }));
   }
