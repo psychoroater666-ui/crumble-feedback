@@ -529,6 +529,19 @@
   // the shape this will send once wiring it up is safe to do.
   // ═══════════════════════════════════════════════════════════════════════
 
+  // ── Integrity metadata (Phase 1): attached to every submission ─────────
+  // device id persists on this phone; the server limits submissions per
+  // device and per phone, and stores these fields in "Meta" columns.
+  const META = (function(){
+    let device = '';
+    try { device = localStorage.getItem('crumble_device') || ''; if(!device){ device = 'dv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem('crumble_device', device); } } catch(e){ device = 'dv_nostorage_' + Math.random().toString(36).slice(2, 8); }
+    const ua = navigator.userAgent || '';
+    const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : 'Other';
+    const browser = /EdgA?\//i.test(ua) ? 'Edge' : /SamsungBrowser/i.test(ua) ? 'Samsung' : /Chrome\//i.test(ua) ? 'Chrome' : /Safari\//i.test(ua) ? 'Safari' : /Firefox\//i.test(ua) ? 'Firefox' : 'Other';
+    return { device, os, browser, screen: (screen.width||0) + 'x' + (screen.height||0), lang: navigator.language || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), gpsAccuracy: null, distanceKm: null, branchSource: '', link: location.href.slice(0, 200), start: Date.now() };
+  })();
+  function metaPayload(){ return { device: META.device, os: META.os, browser: META.browser, screen: META.screen, lang: META.lang, tz: META.tz, gpsAccuracy: META.gpsAccuracy, distanceKm: META.distanceKm, branchSource: META.branchSource, link: META.link, seconds: (Date.now() - META.start) / 1000 }; }
+
   const state = {
     order:null, name:null, phone:null, rating:null,
     location:null, startedAt: Date.now(),
@@ -713,12 +726,13 @@
     payload.token = FORM_TOKEN; payload.rating = state.rating;
     payload.timeTaken = (function(ms){ const t=Math.round(ms/1000), m=Math.floor(t/60), s=t%60; return (m<10?'0':'')+m+'m:'+(s<10?'0':'')+s+'s'; })(Date.now() - state.startedAt);
     payload.clientId = 'din_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+    payload.meta = metaPayload();
     const step = document.querySelector('.step[data-key="comments"]'); step.classList.add('sending');
     let err = step.querySelector('.err'); if(!err){ err = document.createElement('div'); err.className = 'err'; step.querySelector('.nav-row').before(err); }
     err.style.display = 'none'; submitting = true;
     fetch(SUBMIT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
       .then(r => r.json())
-      .then(r => { if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStep('thanks'); })
+      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStep('thanks'); })
       .catch(e => { err.textContent = 'Could not send your feedback: ' + (e.message || e) + '. Please try again.'; err.style.display = 'block'; })
       .finally(() => { submitting = false; step.classList.remove('sending'); });
   }
@@ -768,15 +782,15 @@
     el('branchDetecting').style.display = 'none'; el('branchDetected').style.display = 'none'; el('branchFallback').style.display = 'block';
     el('branchNext').disabled = !state.location;
   }
-  function checkBranch(){ const v = el('branchSelect').value; state.location = v || null; el('branchNext').disabled = !v; }
+  function checkBranch(){ const v = el('branchSelect').value; state.location = v || null; META.branchSource = 'manual'; el('branchNext').disabled = !v; }
   function startGeo(){
     if(geoRequested) return; geoRequested = true;
     const q = (new URLSearchParams(location.search).get('branch') || '').trim().toLowerCase();
     const hit = Object.keys(BRANCH_COORDS).find(n => n.toLowerCase() === q);
-    if(hit){ setDetectedBranch(hit); return; }
+    if(hit){ META.branchSource = 'link'; setDetectedBranch(hit); return; }
     if(!navigator.geolocation){ showBranchFallback(); return; }
     navigator.geolocation.getCurrentPosition(
-      pos => { const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); g ? setDetectedBranch(g) : showBranchFallback(); },
+      pos => { META.gpsAccuracy = pos.coords.accuracy; const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); if(g){ const c = BRANCH_COORDS[g]; META.distanceKm = haversineKm(pos.coords.latitude, pos.coords.longitude, c[0], c[1]); META.branchSource = 'gps'; setDetectedBranch(g); } else showBranchFallback(); },
       () => showBranchFallback(),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
