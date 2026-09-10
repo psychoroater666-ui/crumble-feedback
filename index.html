@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Crumble — Delivery Feedback</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://script.google.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -171,7 +170,6 @@
     background:#FEF2F2; border:1.5px solid #FECACA; color:#B91C1C;
     font-size:.86rem; font-weight:600; text-align:left;
   }
-  .rating-circle.selected{ transform:scale(1.12); box-shadow:0 0 0 3px rgba(1,1,151,.15); }
   @media (prefers-reduced-motion: reduce){ .step{ animation:none !important; } }
   .stamp.pop{ animation: stampPop .5s cubic-bezier(.2,1.6,.3,1) both; }
   @keyframes stampPop{ 0%{ transform:scale(0.2) rotate(-18deg); opacity:0; } 55%{ transform:scale(1.28) rotate(6deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
@@ -235,8 +233,8 @@
     id: 'delivery',
     name: 'Delivery Feedback',
     targetTab: 'Delivery',
-    welcome:  { eyebrow: 'Thanks for choosing Crumble!', title: 'Please fill in this 30 second survey for a chance to win a special prize!' },
-    thankYou: { title: 'Thank you!', body: 'Your response has been recorded. We appreciate you taking the time.' },
+    welcome:  { eyebrow: 'Thanks for choosing Crumble!', title: '30 seconds of feedback earns you a stamp. Two stamps = 10% off your next order.' },
+    thankYou: { title: 'Thank you!', body: 'Your feedback has been recorded — thank you for taking the time.' },
     branches: [
       { name: 'Chaklala Scheme 3', lat: 33.58644, lng: 73.08819 },
       { name: 'Saddar',            lat: 33.59356, lng: 73.05156 },
