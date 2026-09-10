@@ -173,6 +173,17 @@
   }
   .rating-circle.selected{ transform:scale(1.12); box-shadow:0 0 0 3px rgba(1,1,151,.15); }
   @media (prefers-reduced-motion: reduce){ .step{ animation:none !important; } }
+  .stamp-wrap{ margin-top:22px; width:100%; }
+  .scratch{ position:relative; width:100%; max-width:320px; margin:0 auto; height:120px; border-radius:16px; overflow:hidden; cursor:pointer; user-select:none; box-shadow:0 6px 18px rgba(1,1,151,.12); }
+  .scratch canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+  .scratch-under{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg,#010197,#3B5BDB); color:#fff; padding:14px; text-align:center; }
+  .scratch-under b{ font-size:15px; font-weight:800; }
+  .scratch-under small{ font-size:12px; opacity:.9; }
+  .stamps{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
+  .stamp{ width:34px; height:34px; border-radius:50%; border:2px dashed #C9C6DA; display:flex; align-items:center; justify-content:center; font-size:15px; color:#C9C6DA; }
+  .stamp.on{ border-style:solid; border-color:#010197; background:#010197; color:#fff; }
+  .stamp-note{ font-size:12.5px; color:#6B6880; text-align:center; margin-top:10px; line-height:1.55; max-width:320px; margin-left:auto; margin-right:auto; }
+  .stamp-code{ display:inline-block; margin-top:8px; font:800 15px/1 ui-monospace,monospace; letter-spacing:1px; background:#FEF3C7; color:#92400E; border-radius:8px; padding:8px 12px; }
 </style>
 </head>
 <body>
@@ -367,7 +378,8 @@
       const t = CFG.thankYou || {};
       return '<div class="done-icon">' + ICON_OK + '</div>'
            + '<h2 class="title" style="margin-bottom:6px;">' + esc(t.title || 'Thank you!') + '</h2>'
-           + '<p style="color:var(--ink-muted); font-size:.92rem; max-width:28ch;">' + esc(t.body || 'Your response has been recorded.') + '</p>';
+           + '<p style="color:var(--ink-muted); font-size:.92rem; max-width:28ch;">' + esc(t.body || 'Your response has been recorded.') + '</p>'
+           + '<div id="stampHost"></div>';
     }
     const qq = s.q;
     const isLast = (i === steps.length - 2);
@@ -612,6 +624,56 @@
     return (s && s.kind === 'question') ? ('err-' + s.q.id) : 'submitError';
   }
 
+  // ── Stamp card: shown after a successful submission. One stamp per phone
+  // per day is enforced on the server, so this thanks people rather than
+  // giving anyone a way to farm stamps.
+  function showStamp(st){
+    if(!st || (!st.awarded && !st.reward)) return;
+    const host = document.getElementById('stampHost'); if(!host || host.querySelector('.stamp-wrap')) return;
+    const target = st.target || 3;
+    const filled = st.reward ? target : (st.stamps || 0);
+    const left = Math.max(0, target - filled);
+    const wrap = document.createElement('div'); wrap.className = 'stamp-wrap';
+    wrap.innerHTML =
+      '<div class="scratch" id="scratchBox"><div class="scratch-under">'
+      + (st.reward
+          ? '<b>You have earned 10% off!</b><small>Call our helpline and mention this code when you order</small><span class="stamp-code">' + st.reward + '</span>'
+          : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
+      + '</div><canvas id="scratchCanvas"></canvas></div>'
+      + '<div class="stamps">' + Array.from({length: target}, (_, i) => '<div class="stamp' + (i < filled ? ' on' : '') + '">*</div>').join('') + '</div>'
+      + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback - three stamps get you 10% off your next order through our helpline.</div>';
+    host.appendChild(wrap);
+    initScratch();
+  }
+  function initScratch(){
+    const box = document.getElementById('scratchBox'), cv = document.getElementById('scratchCanvas'); if(!cv) return;
+    const r = box.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+    const g = ctx.createLinearGradient(0, 0, r.width, r.height);
+    g.addColorStop(0, '#B8B5C9'); g.addColorStop(.5, '#D8D5E4'); g.addColorStop(1, '#B8B5C9');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, r.width, r.height);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = '700 14px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Scratch here', r.width / 2, r.height / 2 + 5);
+    let drawing = false, cleared = false;
+    const at = e => { const b = cv.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - b.left, y: p.clientY - b.top }; };
+    const scratch = e => {
+      if(!drawing) return; e.preventDefault();
+      const pt = at(e);
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 22, 0, Math.PI * 2); ctx.fill();
+      if(!cleared){
+        try { const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let clear = 0, n = 0;
+              for(let i = 3; i < d.length; i += 64){ n++; if(d[i] === 0) clear++; }
+              if(n && clear / n > 0.45){ cleared = true; cv.style.transition = 'opacity .4s'; cv.style.opacity = '0'; } } catch(err){}
+      }
+    };
+    ['mousedown','touchstart'].forEach(ev => cv.addEventListener(ev, e => { drawing = true; scratch(e); }, { passive: false }));
+    ['mousemove','touchmove'].forEach(ev => cv.addEventListener(ev, scratch, { passive: false }));
+    ['mouseup','mouseleave','touchend'].forEach(ev => cv.addEventListener(ev, () => { drawing = false; }));
+  }
+
+
   async function submitForm(){
     if(submitting) return;
     if(PREVIEW){ goTo(steps.length - 1); return; }
@@ -638,7 +700,7 @@
       try{
         const res = await fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), redirect: 'follow' });
         const data = JSON.parse(await res.text());
-        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; goTo(steps.length - 1); return; }
+        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; goTo(steps.length - 1); showStamp(data.stamp); return; }
         showErr(findSubmitErrorId(), data.message || 'We couldn\'t record your response. Please try again.');
         setSubmitState(false, 'Submit'); submitting = false; return;
       }catch(err){
