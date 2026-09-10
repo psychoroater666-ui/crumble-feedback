@@ -244,7 +244,8 @@
       { name: 'Lake City',         lat: 31.36906, lng: 74.25581 },
       { name: 'Gujranwala',        lat: 32.16844, lng: 74.20106 },
       { name: 'Multan',            lat: 30.26044, lng: 71.49131 },
-      { name: 'Peshawar',          lat: 34.00794, lng: 71.52281 }
+      { name: 'Peshawar',          lat: 34.00794, lng: 71.52281 },
+      { name: 'Canal Road FSD',    lat: 31.45481, lng: 73.16606 }
     ],
     questions: [
       { id: 'phone',    type: 'phone',  required: true,  column: 'Phone Number', placeholder: 'Phone Number' },
@@ -266,6 +267,19 @@
   let current = 0;
   const answers = {};           // questionId -> value
   const startedAt = Date.now();
+  // ── Integrity metadata (Phase 1): attached to every submission ─────────
+  // device id persists on this phone; the server limits submissions per
+  // device and per phone, and stores these fields in "Meta" columns.
+  const META = (function(){
+    let device = '';
+    try { device = localStorage.getItem('crumble_device') || ''; if(!device){ device = 'dv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem('crumble_device', device); } } catch(e){ device = 'dv_nostorage_' + Math.random().toString(36).slice(2, 8); }
+    const ua = navigator.userAgent || '';
+    const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : 'Other';
+    const browser = /EdgA?\//i.test(ua) ? 'Edge' : /SamsungBrowser/i.test(ua) ? 'Samsung' : /Chrome\//i.test(ua) ? 'Chrome' : /Safari\//i.test(ua) ? 'Safari' : /Firefox\//i.test(ua) ? 'Firefox' : 'Other';
+    return { device, os, browser, screen: (screen.width||0) + 'x' + (screen.height||0), lang: navigator.language || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), gpsAccuracy: null, distanceKm: null, branchSource: '', link: location.href.slice(0, 200), start: Date.now() };
+  })();
+  function metaPayload(){ return { device: META.device, os: META.os, browser: META.browser, screen: META.screen, lang: META.lang, tz: META.tz, gpsAccuracy: META.gpsAccuracy, distanceKm: META.distanceKm, branchSource: META.branchSource, link: META.link, seconds: (Date.now() - META.start) / 1000 }; }
+
   let submitting = false;
   let branchAutoAdvanceOff = false;
   let geoRequested = false;
@@ -309,7 +323,7 @@
   // ─── render ───────────────────────────────────────────────────────────
   function buildSteps(){
     steps = [{ kind: 'welcome' }];
-    (CFG.questions || []).forEach(qq => { if(qq.type !== 'phone') steps.push({ kind: 'question', q: qq }); });
+    (CFG.questions || []).forEach(qq => { if(qq.type !== 'phone' && qq.type !== 'name') steps.push({ kind: 'question', q: qq }); });
     steps.push({ kind: 'done' });
   }
 
@@ -334,10 +348,13 @@
 
   function renderStep(s, i){
     if(s.kind === 'welcome'){
-      const phone = q('phone');
+      const phone = q('phone'), name = q('name');
       const w = CFG.welcome || {};
       let h = '<div class="eyebrow">' + esc(w.eyebrow || 'Thanks for choosing Crumble!') + '</div>'
             + '<h2 class="title">' + esc(w.title || 'Please fill in this short survey.') + '</h2>';
+      if(name){
+        h += '<div class="phone-row" style="margin-bottom:10px;"><input type="text" class="phone-input" id="nameInput" autocomplete="name" maxlength="80" placeholder="' + esc(name.placeholder || 'Your name') + '" style="border-radius:14px;padding-left:16px;"></div>';
+      }
       if(phone){
         h += '<div class="phone-row"><div class="cc">+92 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7A7488" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></div>'
            + '<input type="tel" class="phone-input" id="phoneInput" inputmode="numeric" placeholder="' + esc(phone.placeholder || 'Phone Number') + '"></div>';
@@ -479,6 +496,12 @@
   }
 
   function proceedFromWelcome(){
+    const name = q('name');
+    if(name){
+      const v = (document.getElementById('nameInput') || {}).value || '';
+      if(name.required && !v.trim()){ showErr('err-welcome', 'Please enter your name.'); return; }
+      answers[name.id] = v.trim();
+    }
     const phone = q('phone');
     if(phone){
       const v = normalisePhone(document.getElementById('phoneInput').value);
@@ -524,10 +547,16 @@
     if(!b || geoRequested) return;
     geoRequested = true;
     if(PREVIEW){ showBranchFallback(); return; }
+    // Branch named in the link (per-branch QR code): trust it, skip GPS.
+    const qsBranch = (new URLSearchParams(location.search).get('branch') || '').trim().toLowerCase();
+    if(qsBranch){
+      const hit = (CFG.branches || []).find(x => String(x.name).toLowerCase() === qsBranch);
+      if(hit){ META.branchSource = 'link'; setDetectedBranch(hit.name); return; }
+    }
     const hasCoords = (CFG.branches || []).some(x => typeof x.lat === 'number');
     if(navigator.geolocation && hasCoords){
       navigator.geolocation.getCurrentPosition(
-        pos => { const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); g ? setDetectedBranch(g) : showBranchFallback(); },
+        pos => { META.gpsAccuracy = pos.coords.accuracy; const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); if(g){ const b = (CFG.branches||[]).find(x => x.name === g); if(b) META.distanceKm = haversineKm(pos.coords.latitude, pos.coords.longitude, b.lat, b.lng); META.branchSource = 'gps'; setDetectedBranch(g); } else showBranchFallback(); },
         () => showBranchFallback(),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -565,7 +594,7 @@
   function checkBranch(){
     const b = q('branch'); if(!b) return;
     const v = document.getElementById('branchSelect').value;
-    answers[b.id] = v || null;
+    answers[b.id] = v || null; META.branchSource = 'manual';
     document.getElementById('branchNext').disabled = !v;
   }
 
@@ -598,7 +627,8 @@
     const payload = {
       action: 'submit', formId: CFG.id, token: FORM_TOKEN,
       answers: Object.assign({}, answers, Object.fromEntries(Object.entries(answers).map(([k,v]) => [k, Array.isArray(v) ? v.join(', ') : v]))),
-      timeTaken: fmtTimeTaken(Date.now() - startedAt)
+      timeTaken: fmtTimeTaken(Date.now() - startedAt),
+      meta: metaPayload()
     };
     submitting = true;
     showErr(findSubmitErrorId(), '');
