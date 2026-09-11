@@ -662,23 +662,35 @@
   // ── Stamp card: shown after a successful submission. One stamp per phone
   // per day is enforced on the server, so this thanks people rather than
   // giving anyone a way to farm stamps.
-  function showStamp(st){
-    if(!st || (!st.awarded && !st.reward)) return;
-    const host = document.getElementById('stampHost'); if(!host || host.querySelector('.stamp-wrap')) return;
-    const target = st.target || 3;
-    const filled = st.reward ? target : (st.stamps || 0);
+  // The card appears the moment they submit, with the numbers filled in when
+  // the server answers (usually before they finish scratching).
+  function showStampPending(){ renderStamp(null); }
+  function showStamp(st){ renderStamp(st); }
+  function renderStamp(st){
+    const pending = !st;
+    if(st && !st.awarded && !st.reward) return;
+    const host = document.getElementById('stampHost'); if(!host) return;
+    const existing = host.querySelector('.stamp-wrap');
+    if(existing && !pending && existing.dataset.pending !== '1') return;
+    if(existing) existing.remove();
+    const target = (st && st.target) || 2;
+    const filled = pending ? 0 : (st.reward ? target : (st.stamps || 0));
     const left = Math.max(0, target - filled);
-    const wrap = document.createElement('div'); wrap.className = 'stamp-wrap';
+    const wasCleared = !!(document.querySelector('.scratch canvas') && document.querySelector('.scratch canvas').style.opacity === '0');
+    const wrap = document.createElement('div'); wrap.className = 'stamp-wrap'; if(pending) wrap.dataset.pending = '1';
     wrap.innerHTML =
       '<div class="scratch" id="scratchBox"><div class="scratch-under">'
-      + (st.reward
-          ? '<b>You have earned 10% off!</b><small>Call our helpline and mention this code when you order</small><span class="stamp-code">' + st.reward + '</span>'
-          : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
+      + (pending
+          ? '<b>Your stamp is on its way</b><small>Scratch to reveal it</small>'
+          : st.reward
+            ? '<b>You have earned 10% off!</b><small>Call our helpline and mention this code when you order</small><span class="stamp-code">' + st.reward + '</span>'
+            : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
       + '</div><canvas id="scratchCanvas"></canvas></div>'
       + '<div class="stamps">' + Array.from({length: target}, (_, i) => '<div class="stamp' + (i < filled ? ' on' : '') + '">*</div>').join('') + '</div>'
       + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback — ' + target + ' stamps get you 10% off your next order.<br><b>Helpline +92 335 7555722</b></div>';
     host.appendChild(wrap);
     initScratch();
+    if(!pending && wasCleared){ const cv = document.getElementById('scratchCanvas'); if(cv){ cv.style.transition='opacity .3s'; cv.style.opacity='0'; } celebrate(!!(st && st.reward)); }
   }
   // ── Reward celebration ────────────────────────────────────────────────
   // A sequence, not a single burst: the card lifts and glows, light sweeps
@@ -807,6 +819,7 @@
     // immediately and the send continues in the background. A failure is shown
     // honestly (with a Retry) rather than being hidden.
     goTo(steps.length - 1);
+    showStampPending();                     // card is on screen before the network answers
     setSubmitState(true, 'Submitting…');
 
     for(let i = 1; i <= 3; i++){
