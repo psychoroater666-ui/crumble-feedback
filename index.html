@@ -357,7 +357,7 @@
         action: 'form_event', token: (typeof FORM_TOKEN !== 'undefined' ? FORM_TOKEN : ''),
         event, step: step || '', session, source, device, os,
         form: (typeof FORM_ID !== 'undefined' ? FORM_ID : (params.get('f') || 'delivery')),
-        branch: (typeof state !== 'undefined' && state.location) || params.get('branch') || '',
+        branch: branch || (typeof state !== 'undefined' && state.location) || params.get('branch') || '',
         seconds: (Date.now() - start) / 1000, link: location.href.slice(0, 200)
       }, extra || {});
       try {
@@ -367,14 +367,15 @@
         else fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload, keepalive: true }).catch(()=>{});
       } catch(e){}
     }
-    let lastStep = '';
+    let lastStep = '', branch = '';
+    function setBranch(b){ if(b) branch = String(b).slice(0, 40); }
     function step(name){ lastStep = name; send('step', name); }
     function submitted(){ send('submitted', lastStep); sent['abandoned|' + lastStep] = 1; }
     // leaving without finishing
     document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && !sent['submitted|' + lastStep]) send('abandoned', lastStep); });
     window.addEventListener('pagehide', () => { if(!sent['submitted|' + lastStep]) send('abandoned', lastStep); });
     send('open', '');
-    return { step, submitted, session };
+    return { step, submitted, setBranch, session };
   })();
 
   // Preview mode: the dashboard's Form Builder embeds this page and pushes
@@ -711,12 +712,12 @@
     const qsBranch = (new URLSearchParams(location.search).get('branch') || '').trim().toLowerCase();
     if(qsBranch){
       const hit = (CFG.branches || []).find(x => String(x.name).toLowerCase() === qsBranch);
-      if(hit){ META.branchSource = 'link'; setDetectedBranch(hit.name); return; }
+      if(hit){ META.branchSource = 'link'; try { FA.setBranch(hit.name); } catch(e){} setDetectedBranch(hit.name); return; }
     }
     const hasCoords = (CFG.branches || []).some(x => typeof x.lat === 'number');
     if(navigator.geolocation && hasCoords){
       navigator.geolocation.getCurrentPosition(
-        pos => { META.gpsAccuracy = pos.coords.accuracy; const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); if(g){ const b = (CFG.branches||[]).find(x => x.name === g); if(b) META.distanceKm = haversineKm(pos.coords.latitude, pos.coords.longitude, b.lat, b.lng); META.branchSource = 'gps'; setDetectedBranch(g); } else showBranchFallback(); },
+        pos => { META.gpsAccuracy = pos.coords.accuracy; const g = nearestBranch(pos.coords.latitude, pos.coords.longitude); if(g){ const b = (CFG.branches||[]).find(x => x.name === g); if(b) META.distanceKm = haversineKm(pos.coords.latitude, pos.coords.longitude, b.lat, b.lng); META.branchSource = 'gps'; try { FA.setBranch(g); } catch(e){} setDetectedBranch(g); } else showBranchFallback(); },
         () => showBranchFallback(),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -754,7 +755,7 @@
   function checkBranch(){
     const b = q('branch'); if(!b) return;
     const v = document.getElementById('branchSelect').value;
-    answers[b.id] = v || null; META.branchSource = 'manual';
+    answers[b.id] = v || null; META.branchSource = 'manual'; try { FA.setBranch(v); } catch(e){}
     document.getElementById('branchNext').disabled = !v;
   }
 
