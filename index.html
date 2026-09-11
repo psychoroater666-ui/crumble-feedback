@@ -356,6 +356,7 @@
       const body = Object.assign({
         action: 'form_event', token: (typeof FORM_TOKEN !== 'undefined' ? FORM_TOKEN : ''),
         event, step: step || '', session, source, device, os,
+        screen: (screen.width || 0) + 'x' + (screen.height || 0), choice: (extra && extra.choice) || '',
         form: (typeof FORM_ID !== 'undefined' ? FORM_ID : (params.get('f') || 'delivery')),
         branch: branch || (typeof state !== 'undefined' && state.location) || params.get('branch') || '',
         seconds: (Date.now() - start) / 1000, link: location.href.slice(0, 200)
@@ -369,7 +370,7 @@
     }
     let lastStep = '', branch = '';
     function setBranch(b){ if(b) branch = String(b).slice(0, 40); }
-    function step(name){ lastStep = name; send('step', name); }
+    function step(name, choice){ lastStep = name; send('step', name, choice ? { choice } : null); }
     function submitted(){ send('submitted', lastStep); sent['abandoned|' + lastStep] = 1; }
     // leaving without finishing
     document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && !sent['submitted|' + lastStep]) send('abandoned', lastStep); });
@@ -755,7 +756,7 @@
   function checkBranch(){
     const b = q('branch'); if(!b) return;
     const v = document.getElementById('branchSelect').value;
-    answers[b.id] = v || null; META.branchSource = 'manual'; try { FA.setBranch(v); } catch(e){}
+    answers[b.id] = v || null; META.branchSource = 'manual'; try { FA.setBranch(v); FA.step('branch', v); } catch(e){}
     document.getElementById('branchNext').disabled = !v;
   }
 
