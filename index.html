@@ -332,6 +332,51 @@
   const FORM_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx0Zj6y3mM2biuuXuSuHf81zF8RJXI_WpXwcWUkVCxnJd8e_h-sqJ9wlDt-SjlKN0dL/exec';
   const FORM_TOKEN    = 'crumble-dlv-7Kq9pW2xN4mR8vL3sT6yB1zH5jF0cA';
   const FORM_ID       = (new URLSearchParams(location.search).get('f') || 'delivery').toLowerCase();
+
+  // ── Form analytics (anonymous) ────────────────────────────────────────
+  // Records that a form was opened, how far the customer got, and whether
+  // they finished — so completion rate and drop-off can be measured per
+  // branch. No name, phone or comment is ever sent: someone who has not
+  // submitted has not agreed to anything.
+  const FA = (function(){
+    let session = '';
+    try { session = sessionStorage.getItem('crumble_fa') || ''; if(!session){ session = 'fa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); sessionStorage.setItem('crumble_fa', session); } }
+    catch(e){ session = 'fa_' + Math.random().toString(36).slice(2, 10); }
+    const ua = navigator.userAgent || '';
+    const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : 'Other';
+    const device = /Mobi|Android|iPhone/i.test(ua) ? 'Mobile' : /iPad|Tablet/i.test(ua) ? 'Tablet' : 'Desktop';
+    const params = new URLSearchParams(location.search);
+    // where the scan came from: ?src=tent / receipt / bag, else inferred
+    const source = (params.get('src') || params.get('source') || (params.get('branch') ? 'branch-qr' : (document.referrer ? 'link' : 'direct'))).slice(0, 40);
+    const start = Date.now();
+    let sent = {};
+    function send(event, step, extra){
+      const k = event + '|' + (step || '');
+      if(sent[k]) return; sent[k] = 1;
+      const body = Object.assign({
+        action: 'form_event', token: (typeof FORM_TOKEN !== 'undefined' ? FORM_TOKEN : ''),
+        event, step: step || '', session, source, device, os,
+        form: (typeof FORM_ID !== 'undefined' ? FORM_ID : (params.get('f') || 'delivery')),
+        branch: (typeof state !== 'undefined' && state.location) || params.get('branch') || '',
+        seconds: (Date.now() - start) / 1000, link: location.href.slice(0, 200)
+      }, extra || {});
+      try {
+        const payload = JSON.stringify(body);
+        // keepalive so an "abandoned" event still goes when the tab is closing
+        if(navigator.sendBeacon) navigator.sendBeacon(FORM_ENDPOINT, new Blob([payload], { type: 'text/plain;charset=utf-8' }));
+        else fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload, keepalive: true }).catch(()=>{});
+      } catch(e){}
+    }
+    let lastStep = '';
+    function step(name){ lastStep = name; send('step', name); }
+    function submitted(){ send('submitted', lastStep); sent['abandoned|' + lastStep] = 1; }
+    // leaving without finishing
+    document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && !sent['submitted|' + lastStep]) send('abandoned', lastStep); });
+    window.addEventListener('pagehide', () => { if(!sent['submitted|' + lastStep]) send('abandoned', lastStep); });
+    send('open', '');
+    return { step, submitted, session };
+  })();
+
   // Preview mode: the dashboard's Form Builder embeds this page and pushes
   // the config being edited via postMessage. Nothing is submitted or
   // geolocated in preview.
@@ -579,6 +624,7 @@
 
   // ─── navigation ───────────────────────────────────────────────────────
   function goTo(n){
+    try { const st = steps[Math.max(0, Math.min(n, steps.length - 1))]; FA.step(st && st.q ? st.q.id : (st ? st.kind : 'step' + n)); } catch(e){}
     current = Math.max(0, Math.min(n, steps.length - 1));
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
     const el = document.querySelector('.step[data-step="' + current + '"]');
@@ -989,7 +1035,7 @@
       try{
         const res = await fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), redirect: 'follow' });
         const data = JSON.parse(await res.text());
-        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; showStamp(data.stamp); return; }
+        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; try { FA.submitted(); } catch(e){} showStamp(data.stamp); return; }
         submitFailed(data.message || 'We couldn\'t record your response.'); submitting = false; return;
       }catch(err){
         if(i < 3){ setSubmitState(true, 'Retrying… (' + (i+1) + '/3)'); await new Promise(r => setTimeout(r, 900*i)); }
