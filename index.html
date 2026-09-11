@@ -197,6 +197,28 @@
   @keyframes stampPop{ 0%{ transform:scale(.2) rotate(-18deg); opacity:0; } 55%{ transform:scale(1.28) rotate(6deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
   @keyframes rewardIn{ from{ transform:scale(.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
   @media (prefers-reduced-motion: reduce){ .stamp.pop, .scratch-under b { animation:none !important; } }
+  /* celebration */
+  .scratch.earn{ animation: cardEarn .55s cubic-bezier(.2,1.4,.3,1) both; }
+  .scratch.win{ animation: cardWin .8s cubic-bezier(.2,1.4,.3,1) both; }
+  @keyframes cardEarn{ 0%{ transform:scale(1); } 45%{ transform:scale(1.045); } 100%{ transform:scale(1); } }
+  @keyframes cardWin{ 0%{ transform:scale(1) rotate(0); box-shadow:0 8px 20px rgba(1,1,151,.14); }
+                      35%{ transform:scale(1.075) rotate(-.8deg); box-shadow:0 16px 44px rgba(245,158,11,.5); }
+                      60%{ transform:scale(1.02) rotate(.6deg); }
+                      100%{ transform:scale(1) rotate(0); box-shadow:0 12px 30px rgba(245,158,11,.35); } }
+  .scratch.win .scratch-under{ background:linear-gradient(135deg,#7C3AED,#3B5BDB 45%,#F59E0B); }
+  .scratch.win::after, .scratch.earn::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
+    background:linear-gradient(110deg, transparent 30%, rgba(255,255,255,.85) 48%, transparent 62%);
+    transform:translateX(-120%); animation: sheen .85s ease-out .15s both; }
+  @keyframes sheen{ to{ transform:translateX(120%); } }
+  .stamp{ position:relative; }
+  .stamp-ring{ position:absolute; inset:-6px; border-radius:50%; border:2px solid #010197; animation: ringOut .65s ease-out both; pointer-events:none; }
+  @keyframes ringOut{ 0%{ transform:scale(.6); opacity:.9; } 100%{ transform:scale(2.1); opacity:0; } }
+  .stamp-code.shine{ position:relative; overflow:hidden; animation: codeIn .5s cubic-bezier(.2,1.5,.3,1) both; }
+  .stamp-code.shine::after{ content:''; position:absolute; inset:0;
+    background:linear-gradient(110deg, transparent 35%, rgba(255,255,255,.9) 50%, transparent 65%);
+    transform:translateX(-120%); animation: sheen 1.1s ease-out .35s both; }
+  @keyframes codeIn{ from{ transform:scale(.7); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .scratch.win, .scratch.earn, .stamp-ring, .stamp-code.shine, .scratch.win::after, .scratch.earn::after { animation:none !important; } }
 </style>
 </head>
 <body>
@@ -659,38 +681,66 @@
     initScratch();
   }
   // ── Reward celebration ────────────────────────────────────────────────
-  // Fires when the scratch panel is cleared: a short haptic pulse, the stamp
-  // thumping into place, and confetti only for a real reward. Canvas confetti
-  // is drawn once and torn down, so it costs nothing after a second.
-  function buzz(pattern){ try { if(navigator.vibrate) navigator.vibrate(pattern); } catch(e){} }
+  // A sequence, not a single burst: the card lifts and glows, light sweeps
+  // across it, the stamp punches in with a ring, then confetti falls from the
+  // top of the card. Haptics are timed to the beats.
+  function buzz(p){ try { if(navigator.vibrate) navigator.vibrate(p); } catch(e){} }
   function celebrate(isReward){
-    buzz(isReward ? [18, 60, 18, 60, 34] : 22);
-    const stamps = document.querySelectorAll('.stamp.on');
-    const last = stamps[stamps.length - 1];
-    if(last){ last.classList.add('pop'); }
     const box = document.querySelector('.stamp-wrap'); if(!box) return;
-    const cv = document.createElement('canvas');
-    cv.className = 'confetti'; box.style.position = 'relative'; box.appendChild(cv);
-    const w = box.clientWidth, h = 260, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const card = box.querySelector('.scratch');
+    box.classList.add('celebrating');
+    if(card){ card.classList.add(isReward ? 'win' : 'earn'); }
+    buzz(isReward ? 14 : 10);                                   // beat 1: the reveal
+
+    setTimeout(() => {                                          // beat 2: the stamp lands
+      const on = box.querySelectorAll('.stamp.on');
+      const last = on[on.length - 1];
+      if(last){
+        last.classList.add('pop');
+        const ring = document.createElement('span'); ring.className = 'stamp-ring';
+        last.appendChild(ring); setTimeout(() => ring.remove(), 800);
+      }
+      buzz(isReward ? [0, 26] : [0, 18]);
+    }, 260);
+
+    if(!isReward){ setTimeout(() => confetti(box, 26, false), 300); return; }
+
+    setTimeout(() => {                                           // beat 3: the win
+      confetti(box, 110, true);
+      buzz([0, 30, 70, 30, 70, 60]);
+      const code = box.querySelector('.stamp-code');
+      if(code) code.classList.add('shine');
+    }, 420);
+  }
+  function confetti(box, count, big){
+    const cv = document.createElement('canvas'); cv.className = 'confetti';
+    box.style.position = 'relative'; box.appendChild(cv);
+    const w = box.clientWidth || 320, h = 300, dpr = Math.min(2, window.devicePixelRatio || 1);
     cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
     const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-    const colors = ['#010197', '#3B5BDB', '#F59E0B', '#EC4899', '#22D3EE', '#10B981'];
-    const bits = Array.from({ length: isReward ? 90 : 34 }, () => ({
-      x: w / 2 + (Math.random() - .5) * 90, y: 40 + Math.random() * 20,
-      vx: (Math.random() - .5) * (isReward ? 6 : 4.2), vy: (isReward ? -6 : -4.6) - Math.random() * 5,
-      s: 4 + Math.random() * 5, r: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
-      c: colors[(Math.random() * colors.length) | 0]
-    }));
-    let frames = 0;
+    const colors = big ? ['#FFD166','#F59E0B','#EC4899','#22D3EE','#3B5BDB','#10B981','#FFFFFF']
+                       : ['#3B5BDB','#22D3EE','#010197','#94A3B8'];
+    const bits = Array.from({ length: count }, (_, i) => {
+      const fromLeft = i % 2 === 0;
+      return { x: big ? (fromLeft ? w * 0.12 : w * 0.88) : w / 2 + (Math.random() - .5) * 70,
+               y: big ? 70 : 50,
+               vx: big ? (fromLeft ? 1 : -1) * (1.4 + Math.random() * 3.6) : (Math.random() - .5) * 4,
+               vy: (big ? -7.5 : -5) - Math.random() * 4.5,
+               s: (big ? 5 : 4) + Math.random() * 5, r: Math.random() * 6.28, vr: (Math.random() - .5) * .34,
+               c: colors[(Math.random() * colors.length) | 0], round: Math.random() < .25 };
+    });
+    const life = big ? 120 : 85; let f = 0;
     (function tick(){
-      frames++; ctx.clearRect(0, 0, w, h);
+      f++; ctx.clearRect(0, 0, w, h);
       bits.forEach(b => {
-        b.vy += 0.22; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+        b.vy += 0.26; b.vx *= 0.995; b.x += b.vx; b.y += b.vy; b.r += b.vr;
         ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r);
-        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - frames / (isReward ? 105 : 76));
-        ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * 0.6); ctx.restore();
+        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - f / life);
+        if(b.round){ ctx.beginPath(); ctx.arc(0, 0, b.s / 2, 0, 6.28); ctx.fill(); }
+        else ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * .62);
+        ctx.restore();
       });
-      if(frames < (isReward ? 110 : 80)) requestAnimationFrame(tick); else cv.remove();
+      if(f < life) requestAnimationFrame(tick); else cv.remove();
     })();
   }
 
@@ -723,6 +773,15 @@
   }
 
 
+  // Shown on the thank-you screen if the background send did not succeed.
+  function submitFailed(msg){
+    const host = document.getElementById('stampHost'); if(!host) return;
+    host.innerHTML = '<div style="max-width:320px;margin:20px auto 0;padding:14px 16px;border-radius:12px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:13px;line-height:1.55;text-align:center;">'
+      + '<b>Not sent yet.</b><br>' + String(msg || '') + '<br>'
+      + '<button onclick="retrySubmit()" style="margin-top:10px;padding:9px 16px;border:none;border-radius:9px;background:#010197;color:#fff;font:700 13px Inter,sans-serif;cursor:pointer;">Try again</button></div>';
+  }
+  function retrySubmit(){ const h = document.getElementById('stampHost'); if(h) h.innerHTML = ''; submitting = false; submitForm(); }
+
   async function submitForm(){
     if(submitting) return;
     if(PREVIEW){ goTo(steps.length - 1); return; }
@@ -743,21 +802,24 @@
     };
     submitting = true;
     showErr(findSubmitErrorId(), '');
+    // Apps Script takes 1-3s to answer on a cold start. Making the customer
+    // watch that is the whole complaint, so the thank-you screen appears
+    // immediately and the send continues in the background. A failure is shown
+    // honestly (with a Retry) rather than being hidden.
+    goTo(steps.length - 1);
     setSubmitState(true, 'Submitting…');
 
     for(let i = 1; i <= 3; i++){
       try{
         const res = await fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), redirect: 'follow' });
         const data = JSON.parse(await res.text());
-        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; goTo(steps.length - 1); showStamp(data.stamp); return; }
-        showErr(findSubmitErrorId(), data.message || 'We couldn\'t record your response. Please try again.');
-        setSubmitState(false, 'Submit'); submitting = false; return;
+        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; showStamp(data.stamp); return; }
+        submitFailed(data.message || 'We couldn\'t record your response.'); submitting = false; return;
       }catch(err){
         if(i < 3){ setSubmitState(true, 'Retrying… (' + (i+1) + '/3)'); await new Promise(r => setTimeout(r, 900*i)); }
       }
     }
-    showErr(findSubmitErrorId(), 'Network problem — please check your connection and tap Submit again.');
-    setSubmitState(false, 'Submit'); submitting = false;
+    submitFailed('Network problem — please check your connection.'); submitting = false;
   }
 
   // ─── boot ─────────────────────────────────────────────────────────────
