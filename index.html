@@ -357,6 +357,7 @@
         action: 'form_event', token: (typeof FORM_TOKEN !== 'undefined' ? FORM_TOKEN : ''),
         event, step: step || '', session, source, device, os,
         screen: (screen.width || 0) + 'x' + (screen.height || 0), choice: (extra && extra.choice) || '',
+        visitor: visitorType, backs: backCount, erased: wroteThenErased,
         form: (typeof FORM_ID !== 'undefined' ? FORM_ID : (params.get('f') || 'delivery')),
         branch: branch || (typeof state !== 'undefined' && state.location) || params.get('branch') || '',
         seconds: (Date.now() - start) / 1000, link: location.href.slice(0, 200)
@@ -368,6 +369,34 @@
         else fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload, keepalive: true }).catch(()=>{});
       } catch(e){}
     }
+    // ── Behaviour signals ───────────────────────────────────────────────
+    // Hesitation, reconsideration and withheld feedback. We record only that
+    // these happened — never the text someone chose not to send.
+    let firstTap = null, backCount = 0, ratingChanges = [], wroteThenErased = 0, maxTyped = 0;
+    function markFirstTap(){ if(firstTap === null){ firstTap = (Date.now() - start) / 1000; send('first_tap', '', { seconds: firstTap }); } }
+    function markBack(){ backCount++; }
+    function markRating(v){
+        const prev = ratingChanges.length ? ratingChanges[ratingChanges.length - 1] : null;
+        ratingChanges.push(v);
+        if(prev != null && v !== prev) send('rating_changed', 'rating', { choice: prev + '->' + v });
+    }
+    function watchComment(el){
+        if(!el || el.__faWatched) return; el.__faWatched = true;
+        el.addEventListener('input', () => { maxTyped = Math.max(maxTyped, el.value.length); });
+        el.addEventListener('blur', () => {
+            // typed something substantial, then cleared it: feedback withheld
+            if(maxTyped >= 15 && el.value.trim().length === 0){ wroteThenErased++; send('comment_erased', 'comments', { choice: String(maxTyped) + ' chars'  }); }
+        });
+    }
+    // first visit from this device, or a returning customer (anonymous)
+    let visitorType = 'new';
+    try {
+        const seen = localStorage.getItem('crumble_seen_form');
+        visitorType = seen ? 'returning' : 'new';
+        localStorage.setItem('crumble_seen_form', String(Date.now()));
+    } catch(e){}
+    document.addEventListener('pointerdown', markFirstTap, { once: true, capture: true });
+
     let lastStep = '', branch = '';
     function setBranch(b){ if(b) branch = String(b).slice(0, 40); }
     function step(name, choice){ lastStep = name; send('step', name, choice ? { choice } : null); }
@@ -376,7 +405,7 @@
     document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && !sent['submitted|' + lastStep]) send('abandoned', lastStep); });
     window.addEventListener('pagehide', () => { if(!sent['submitted|' + lastStep]) send('abandoned', lastStep); });
     send('open', '');
-    return { step, submitted, setBranch, session };
+    return { step, submitted, setBranch, session, markBack, markRating, watchComment, markFirstTap };
   })();
 
   // Preview mode: the dashboard's Form Builder embeds this page and pushes
@@ -585,6 +614,7 @@
   function bindEvents(){
     document.querySelectorAll('.rating-row').forEach(row => {
       row.querySelectorAll('.rating-circle').forEach(c => c.addEventListener('click', () => {
+        try { FA.markRating(c.dataset.val); } catch(e){}
         row.querySelectorAll('.rating-circle').forEach(x => x.classList.remove('selected'));
         c.classList.add('selected');
         answers[row.dataset.q] = Number(c.dataset.val);
@@ -626,6 +656,7 @@
 
   // ─── navigation ───────────────────────────────────────────────────────
   function goTo(n){
+    try { const ta = document.querySelector('.step.active textarea'); if(ta) FA.watchComment(ta); } catch(e){}
     try { const st = steps[Math.max(0, Math.min(n, steps.length - 1))]; FA.step(st && st.q ? st.q.id : (st ? st.kind : 'step' + n)); } catch(e){}
     current = Math.max(0, Math.min(n, steps.length - 1));
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -639,6 +670,7 @@
   }
   function next(){ goTo(current + 1); }
   function prev(){
+    try { FA.markBack(); } catch(e){}
     const s = steps[current];
     if(s && s.kind === 'question' && s.q.type === 'branch') branchAutoAdvanceOff = true; // they went back on purpose
     goTo(current - 1);
