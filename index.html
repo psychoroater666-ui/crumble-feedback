@@ -253,8 +253,8 @@
     id: 'delivery',
     name: 'Delivery Feedback',
     targetTab: 'Delivery',
-    welcome:  { eyebrow: 'Thanks for choosing Crumble!', title: '30 seconds of feedback earns you a stamp. Two stamps = 10% off your next order.' },
-    thankYou: { title: 'Thank you!', body: 'Your feedback has been recorded — thank you for taking the time.' },
+    welcome:  { eyebrow: 'Thanks for choosing Crumble!', title: 'Please fill in this 30 second survey for a chance to win a special prize!' },
+    thankYou: { title: 'Thank you!', body: 'Your response has been recorded. We appreciate you taking the time.' },
     branches: [
       { name: 'Chaklala Scheme 3', lat: 33.58644, lng: 73.08819 },
       { name: 'Saddar',            lat: 33.59356, lng: 73.05156 },
@@ -654,7 +654,7 @@
           : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
       + '</div><canvas id="scratchCanvas"></canvas></div>'
       + '<div class="stamps">' + Array.from({length: target}, (_, i) => '<div class="stamp' + (i < filled ? ' on' : '') + '">*</div>').join('') + '</div>'
-      + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback - three stamps get you 10% off your next order through our helpline.</div>';
+      + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback — ' + target + ' stamps get you 10% off your next order.<br><b>Helpline +92 335 7555722</b></div>';
     host.appendChild(wrap);
     initScratch();
   }
@@ -668,7 +668,6 @@
     const stamps = document.querySelectorAll('.stamp.on');
     const last = stamps[stamps.length - 1];
     if(last){ last.classList.add('pop'); }
-    if(!isReward) return;
     const box = document.querySelector('.stamp-wrap'); if(!box) return;
     const cv = document.createElement('canvas');
     cv.className = 'confetti'; box.style.position = 'relative'; box.appendChild(cv);
@@ -676,9 +675,9 @@
     cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
     const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
     const colors = ['#010197', '#3B5BDB', '#F59E0B', '#EC4899', '#22D3EE', '#10B981'];
-    const bits = Array.from({ length: 70 }, () => ({
+    const bits = Array.from({ length: isReward ? 90 : 34 }, () => ({
       x: w / 2 + (Math.random() - .5) * 90, y: 40 + Math.random() * 20,
-      vx: (Math.random() - .5) * 5.5, vy: -5 - Math.random() * 5,
+      vx: (Math.random() - .5) * (isReward ? 6 : 4.2), vy: (isReward ? -6 : -4.6) - Math.random() * 5,
       s: 4 + Math.random() * 5, r: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
       c: colors[(Math.random() * colors.length) | 0]
     }));
@@ -688,10 +687,10 @@
       bits.forEach(b => {
         b.vy += 0.22; b.x += b.vx; b.y += b.vy; b.r += b.vr;
         ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r);
-        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - frames / 95);
+        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - frames / (isReward ? 105 : 76));
         ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * 0.6); ctx.restore();
       });
-      if(frames < 100) requestAnimationFrame(tick); else cv.remove();
+      if(frames < (isReward ? 110 : 80)) requestAnimationFrame(tick); else cv.remove();
     })();
   }
 
