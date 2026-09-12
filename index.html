@@ -1069,6 +1069,9 @@
       action: 'submit', formId: CFG.id, token: FORM_TOKEN,
       answers: Object.assign({}, answers, Object.fromEntries(Object.entries(answers).map(([k,v]) => [k, Array.isArray(v) ? v.join(', ') : v]))),
       timeTaken: fmtTimeTaken(Date.now() - startedAt),
+      // Lets the backend recognise a retry of THIS submission rather than
+      // treating it as a second one. The dine-in form has always sent one.
+      clientId: 'dlv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
       meta: metaPayload()
     };
     submitting = true;
