@@ -778,7 +778,7 @@
     err.style.display = 'none'; submitting = true;
     fetch(POST_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       .then(r => r.json())
-      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStamp(r.stamp); })
+      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStamp(r.stamp || { awarded: false }); })
       .catch(e => { err.textContent = 'Could not send your feedback: ' + (e.message || e) + '. Please try again.'; err.style.display = 'block'; })
       .finally(() => { submitting = false; step.classList.remove('sending'); });
   }
@@ -854,7 +854,16 @@
   function showStamp(st){ renderStamp(st); }
   function renderStamp(st){
     const pending = !st;
-    if(st && !st.awarded && !st.reward) return;
+    // Nothing to reveal: clear the "your stamp is on its way" card instead of
+    // leaving it on screen for ever. It used to just return, so a customer who
+    // earned no stamp -- or whose submission was queued -- sat looking at a
+    // scratch card that would never resolve.
+    if(st && !st.awarded && !st.reward){
+      const s0 = document.querySelector('.step[data-key="thanks"]');
+      const w0 = s0 && s0.querySelector('.stamp-wrap');
+      if(w0) w0.remove();
+      return;
+    }
     const step = document.querySelector('.step[data-key="thanks"]'); if(!step) return;
     const existing = step.querySelector('.stamp-wrap');
     if(existing && !pending && existing.dataset.pending !== '1') return;
