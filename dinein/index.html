@@ -773,12 +773,12 @@
     payload.clientId = 'din_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
     payload.meta = metaPayload();
     const step = document.querySelector('.step[data-key="comments"]'); step.classList.add('sending');
-    showStep('thanks'); showStampPending();      // reward on screen immediately; send continues behind it
+    showStep('thanks');                          // no reward card on dine-in
     let err = step.querySelector('.err'); if(!err){ err = document.createElement('div'); err.className = 'err'; step.querySelector('.nav-row').before(err); }
     err.style.display = 'none'; submitting = true;
     fetch(POST_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       .then(r => r.json())
-      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStamp(r.stamp || { awarded: false }); })
+      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); /* no stamp on dine-in */; })
       .catch(e => { err.textContent = 'Could not send your feedback: ' + (e.message || e) + '. Please try again.'; err.style.display = 'block'; })
       .finally(() => { submitting = false; step.classList.remove('sending'); });
   }
@@ -852,41 +852,11 @@
   // the server answers (usually before they finish scratching).
   function showStampPending(){ renderStamp(null); }
   function showStamp(st){ renderStamp(st); }
-  function renderStamp(st){
-    const pending = !st;
-    // Nothing to reveal: clear the "your stamp is on its way" card instead of
-    // leaving it on screen for ever. It used to just return, so a customer who
-    // earned no stamp -- or whose submission was queued -- sat looking at a
-    // scratch card that would never resolve.
-    if(st && !st.awarded && !st.reward){
-      const s0 = document.querySelector('.step[data-key="thanks"]');
-      const w0 = s0 && s0.querySelector('.stamp-wrap');
-      if(w0) w0.remove();
-      return;
-    }
-    const step = document.querySelector('.step[data-key="thanks"]'); if(!step) return;
-    const existing = step.querySelector('.stamp-wrap');
-    if(existing && !pending && existing.dataset.pending !== '1') return;
-    if(existing) existing.remove();
-    const target = (st && st.target) || 2;
-    const filled = pending ? 0 : (st.reward ? target : (st.stamps || 0));
-    const left = Math.max(0, target - filled);
-    const wasCleared = !!(document.querySelector('.scratch canvas') && document.querySelector('.scratch canvas').style.opacity === '0');
-    const wrap = document.createElement('div'); wrap.className = 'stamp-wrap'; if(pending) wrap.dataset.pending = '1';
-    wrap.innerHTML =
-      '<div class="scratch" id="scratchBox"><div class="scratch-under">'
-      + (pending
-          ? '<b>Your stamp is on its way</b><small>Scratch to reveal it</small>'
-          : st.reward
-            ? '<b>You have earned 10% off!</b><small>Call our helpline and mention this code when you order</small><span class="stamp-code">' + st.reward + '</span>'
-            : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
-      + '</div><canvas id="scratchCanvas"></canvas></div>'
-      + '<div class="stamps">' + Array.from({length: target}, (_, i) => '<div class="stamp' + (i < filled ? ' on' : '') + '">*</div>').join('') + '</div>'
-      + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback — ' + target + ' stamps get you 10% off your next order.<br><b>Helpline +92 335 7555722</b></div>';
-    step.appendChild(wrap);
-    initScratch();
-    if(!pending && wasCleared){ const cv = document.getElementById('scratchCanvas'); if(cv){ cv.style.transition='opacity .3s'; cv.style.opacity='0'; } celebrate(!!(st && st.reward)); }
-  }
+  // Stamps are a delivery-only reward, so the dine-in form never shows a
+  // scratch card. Leaving this as a no-op keeps every call site harmless --
+  // including the one that used to draw a "your stamp is on its way" card the
+  // moment the thank-you screen appeared, which then had nothing to reveal.
+  function renderStamp(){ /* dine-in earns no stamp */ }
   // ── Reward celebration ────────────────────────────────────────────────
   // A sequence, not a single burst: the card lifts and glows, light sweeps
   // across it, the stamp punches in with a ring, then confetti falls from the
