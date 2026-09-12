@@ -178,6 +178,45 @@
   .rating-row{ margin:18px 0 6px; }
   .sending{ opacity:.6; pointer-events:none; }
   .err{ color:#DC2626; font-size:13px; margin:10px 0 0; font-weight:600; display:none; }
+  #stampHost{ width:100%; display:flex; justify-content:center; }
+  .stamp-wrap{ width:100%; max-width:320px; margin:26px auto 0; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .scratch{ position:relative; width:100%; height:124px; border-radius:16px; overflow:hidden; cursor:pointer; user-select:none; box-shadow:0 8px 20px rgba(1,1,151,.14); }
+  .scratch canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block; }
+  .scratch-under{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; background:linear-gradient(135deg,#010197,#3B5BDB); color:#fff; padding:16px; text-align:center; }
+  .scratch-under b{ font-size:15px; font-weight:800; line-height:1.3; animation: rewardIn .5s ease-out both; }
+  .scratch-under small{ font-size:12px; opacity:.92; line-height:1.4; }
+  .stamps{ display:flex; gap:12px; justify-content:center; }
+  .stamp{ width:34px; height:34px; border-radius:50%; border:2px dashed #C9C6DA; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; color:#C9C6DA; flex-shrink:0; }
+  .stamp.on{ border-style:solid; border-color:#010197; background:#010197; color:#fff; }
+  .stamp.pop{ animation: stampPop .5s cubic-bezier(.2,1.6,.3,1) both; }
+  .stamp-note{ font-size:12.5px; color:#6B6880; text-align:center; line-height:1.6; margin:0; }
+  .stamp-code{ display:inline-block; font:800 15px/1 ui-monospace,monospace; letter-spacing:1px; background:#FEF3C7; color:#92400E; border-radius:8px; padding:9px 13px; }
+  .confetti{ position:absolute; left:0; top:-30px; pointer-events:none; z-index:5; }
+  @keyframes stampPop{ 0%{ transform:scale(.2) rotate(-18deg); opacity:0; } 55%{ transform:scale(1.28) rotate(6deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
+  @keyframes rewardIn{ from{ transform:scale(.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .stamp.pop, .scratch-under b { animation:none !important; } }
+  /* celebration */
+  .scratch.earn{ animation: cardEarn .55s cubic-bezier(.2,1.4,.3,1) both; }
+  .scratch.win{ animation: cardWin .8s cubic-bezier(.2,1.4,.3,1) both; }
+  @keyframes cardEarn{ 0%{ transform:scale(1); } 45%{ transform:scale(1.045); } 100%{ transform:scale(1); } }
+  @keyframes cardWin{ 0%{ transform:scale(1) rotate(0); box-shadow:0 8px 20px rgba(1,1,151,.14); }
+                      35%{ transform:scale(1.075) rotate(-.8deg); box-shadow:0 16px 44px rgba(245,158,11,.5); }
+                      60%{ transform:scale(1.02) rotate(.6deg); }
+                      100%{ transform:scale(1) rotate(0); box-shadow:0 12px 30px rgba(245,158,11,.35); } }
+  .scratch.win .scratch-under{ background:linear-gradient(135deg,#7C3AED,#3B5BDB 45%,#F59E0B); }
+  .scratch.win::after, .scratch.earn::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
+    background:linear-gradient(110deg, transparent 30%, rgba(255,255,255,.85) 48%, transparent 62%);
+    transform:translateX(-120%); animation: sheen .85s ease-out .15s both; }
+  @keyframes sheen{ to{ transform:translateX(120%); } }
+  .stamp{ position:relative; }
+  .stamp-ring{ position:absolute; inset:-6px; border-radius:50%; border:2px solid #010197; animation: ringOut .65s ease-out both; pointer-events:none; }
+  @keyframes ringOut{ 0%{ transform:scale(.6); opacity:.9; } 100%{ transform:scale(2.1); opacity:0; } }
+  .stamp-code.shine{ position:relative; overflow:hidden; animation: codeIn .5s cubic-bezier(.2,1.5,.3,1) both; }
+  .stamp-code.shine::after{ content:''; position:absolute; inset:0;
+    background:linear-gradient(110deg, transparent 35%, rgba(255,255,255,.9) 50%, transparent 65%);
+    transform:translateX(-120%); animation: sheen 1.1s ease-out .35s both; }
+  @keyframes codeIn{ from{ transform:scale(.7); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .scratch.win, .scratch.earn, .stamp-ring, .stamp-code.shine, .scratch.win::after, .scratch.earn::after { animation:none !important; } }
 </style>
 </head>
 <body>
@@ -716,7 +755,13 @@
     };
   }
 
-  const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbx0Zj6y3mM2biuuXuSuHf81zF8RJXI_WpXwcWUkVCxnJd8e_h-sqJ9wlDt-SjlKN0dL/exec';
+  const SUBMIT_URL = 'https://script.google.com/macros/s/AKfycbx0Zj6y3mM2biuuXuSuHf81zF8RJXI_WpXwcWUkVCxnJd8e_h-sqJ9wlDt-SjlKN0dL/exec'
+  // Submissions go through our own Worker rather than straight to Apps Script.
+  // The Worker gives Apps Script a few seconds to record it and return the
+  // scratch-card stamp; if that does not happen it keeps the response safely
+  // and retries every minute. Before this, a busy Apps Script showed the
+  // customer an error and their feedback was lost.
+  const POST_URL = 'https://dashboard.crumblesentinel.com/hook/form';
   const FORM_TOKEN = 'crumble-dlv-7Kq9pW2xN4mR8vL3sT6yB1zH5jF0cA';
   let submitting = false;
   function submitForm(){
@@ -728,11 +773,12 @@
     payload.clientId = 'din_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
     payload.meta = metaPayload();
     const step = document.querySelector('.step[data-key="comments"]'); step.classList.add('sending');
+    showStep('thanks'); showStampPending();      // reward on screen immediately; send continues behind it
     let err = step.querySelector('.err'); if(!err){ err = document.createElement('div'); err.className = 'err'; step.querySelector('.nav-row').before(err); }
     err.style.display = 'none'; submitting = true;
-    fetch(SUBMIT_URL, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
+    fetch(POST_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       .then(r => r.json())
-      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStep('thanks'); })
+      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); showStamp(r.stamp); })
       .catch(e => { err.textContent = 'Could not send your feedback: ' + (e.message || e) + '. Please try again.'; err.style.display = 'block'; })
       .finally(() => { submitting = false; step.classList.remove('sending'); });
   }
@@ -798,6 +844,131 @@
   Object.keys(BRANCH_COORDS).forEach(n => { const o = document.createElement('option'); o.textContent = n; el('branchSelect').appendChild(o); });
   // ask for location as soon as the customer reaches the intro (same timing as delivery)
   document.getElementById('introNext').addEventListener('click', startGeo);
+
+  // ── Stamp card: shown after a successful submission. One stamp per phone
+  // per day is enforced on the server, so this thanks people rather than
+  // giving anyone a way to farm stamps.
+  // The card appears the moment they submit, with the numbers filled in when
+  // the server answers (usually before they finish scratching).
+  function showStampPending(){ renderStamp(null); }
+  function showStamp(st){ renderStamp(st); }
+  function renderStamp(st){
+    const pending = !st;
+    if(st && !st.awarded && !st.reward) return;
+    const step = document.querySelector('.step[data-key="thanks"]'); if(!step) return;
+    const existing = step.querySelector('.stamp-wrap');
+    if(existing && !pending && existing.dataset.pending !== '1') return;
+    if(existing) existing.remove();
+    const target = (st && st.target) || 2;
+    const filled = pending ? 0 : (st.reward ? target : (st.stamps || 0));
+    const left = Math.max(0, target - filled);
+    const wasCleared = !!(document.querySelector('.scratch canvas') && document.querySelector('.scratch canvas').style.opacity === '0');
+    const wrap = document.createElement('div'); wrap.className = 'stamp-wrap'; if(pending) wrap.dataset.pending = '1';
+    wrap.innerHTML =
+      '<div class="scratch" id="scratchBox"><div class="scratch-under">'
+      + (pending
+          ? '<b>Your stamp is on its way</b><small>Scratch to reveal it</small>'
+          : st.reward
+            ? '<b>You have earned 10% off!</b><small>Call our helpline and mention this code when you order</small><span class="stamp-code">' + st.reward + '</span>'
+            : '<b>Stamp ' + filled + ' of ' + target + '</b><small>' + (left === 1 ? 'One more stamp for 10% off' : left + ' more stamps for 10% off') + '</small>')
+      + '</div><canvas id="scratchCanvas"></canvas></div>'
+      + '<div class="stamps">' + Array.from({length: target}, (_, i) => '<div class="stamp' + (i < filled ? ' on' : '') + '">*</div>').join('') + '</div>'
+      + '<div class="stamp-note">Scratch to reveal. One stamp per day when you share feedback — ' + target + ' stamps get you 10% off your next order.<br><b>Helpline +92 335 7555722</b></div>';
+    step.appendChild(wrap);
+    initScratch();
+    if(!pending && wasCleared){ const cv = document.getElementById('scratchCanvas'); if(cv){ cv.style.transition='opacity .3s'; cv.style.opacity='0'; } celebrate(!!(st && st.reward)); }
+  }
+  // ── Reward celebration ────────────────────────────────────────────────
+  // A sequence, not a single burst: the card lifts and glows, light sweeps
+  // across it, the stamp punches in with a ring, then confetti falls from the
+  // top of the card. Haptics are timed to the beats.
+  function buzz(p){ try { if(navigator.vibrate) navigator.vibrate(p); } catch(e){} }
+  function celebrate(isReward){
+    const box = document.querySelector('.stamp-wrap'); if(!box) return;
+    const card = box.querySelector('.scratch');
+    box.classList.add('celebrating');
+    if(card){ card.classList.add(isReward ? 'win' : 'earn'); }
+    buzz(isReward ? 14 : 10);                                   // beat 1: the reveal
+
+    setTimeout(() => {                                          // beat 2: the stamp lands
+      const on = box.querySelectorAll('.stamp.on');
+      const last = on[on.length - 1];
+      if(last){
+        last.classList.add('pop');
+        const ring = document.createElement('span'); ring.className = 'stamp-ring';
+        last.appendChild(ring); setTimeout(() => ring.remove(), 800);
+      }
+      buzz(isReward ? [0, 26] : [0, 18]);
+    }, 260);
+
+    if(!isReward){ setTimeout(() => confetti(box, 26, false), 300); return; }
+
+    setTimeout(() => {                                           // beat 3: the win
+      confetti(box, 110, true);
+      buzz([0, 30, 70, 30, 70, 60]);
+      const code = box.querySelector('.stamp-code');
+      if(code) code.classList.add('shine');
+    }, 420);
+  }
+  function confetti(box, count, big){
+    const cv = document.createElement('canvas'); cv.className = 'confetti';
+    box.style.position = 'relative'; box.appendChild(cv);
+    const w = box.clientWidth || 320, h = 300, dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+    const colors = big ? ['#FFD166','#F59E0B','#EC4899','#22D3EE','#3B5BDB','#10B981','#FFFFFF']
+                       : ['#3B5BDB','#22D3EE','#010197','#94A3B8'];
+    const bits = Array.from({ length: count }, (_, i) => {
+      const fromLeft = i % 2 === 0;
+      return { x: big ? (fromLeft ? w * 0.12 : w * 0.88) : w / 2 + (Math.random() - .5) * 70,
+               y: big ? 70 : 50,
+               vx: big ? (fromLeft ? 1 : -1) * (1.4 + Math.random() * 3.6) : (Math.random() - .5) * 4,
+               vy: (big ? -7.5 : -5) - Math.random() * 4.5,
+               s: (big ? 5 : 4) + Math.random() * 5, r: Math.random() * 6.28, vr: (Math.random() - .5) * .34,
+               c: colors[(Math.random() * colors.length) | 0], round: Math.random() < .25 };
+    });
+    const life = big ? 120 : 85; let f = 0;
+    (function tick(){
+      f++; ctx.clearRect(0, 0, w, h);
+      bits.forEach(b => {
+        b.vy += 0.26; b.vx *= 0.995; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r);
+        ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - f / life);
+        if(b.round){ ctx.beginPath(); ctx.arc(0, 0, b.s / 2, 0, 6.28); ctx.fill(); }
+        else ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * .62);
+        ctx.restore();
+      });
+      if(f < life) requestAnimationFrame(tick); else cv.remove();
+    })();
+  }
+
+  function initScratch(){
+    const box = document.getElementById('scratchBox'), cv = document.getElementById('scratchCanvas'); if(!cv) return;
+    const r = box.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+    const g = ctx.createLinearGradient(0, 0, r.width, r.height);
+    g.addColorStop(0, '#B8B5C9'); g.addColorStop(.5, '#D8D5E4'); g.addColorStop(1, '#B8B5C9');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, r.width, r.height);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = '700 14px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Scratch here', r.width / 2, r.height / 2 + 5);
+    let drawing = false, cleared = false;
+    const at = e => { const b = cv.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - b.left, y: p.clientY - b.top }; };
+    const scratch = e => {
+      if(!drawing) return; e.preventDefault();
+      const pt = at(e);
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 22, 0, Math.PI * 2); ctx.fill();
+      if(!cleared){
+        try { const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let clear = 0, n = 0;
+              for(let i = 3; i < d.length; i += 64){ n++; if(d[i] === 0) clear++; }
+              if(n && clear / n > 0.45){ cleared = true; cv.style.transition = 'opacity .45s'; cv.style.opacity = '0'; celebrate(!!box.querySelector('.stamp-code')); } } catch(err){}
+      }
+    };
+    ['mousedown','touchstart'].forEach(ev => cv.addEventListener(ev, e => { if(!drawing) buzz(8); drawing = true; scratch(e); }, { passive: false }));
+    ['mousemove','touchmove'].forEach(ev => cv.addEventListener(ev, scratch, { passive: false }));
+    ['mouseup','mouseleave','touchend'].forEach(ev => cv.addEventListener(ev, () => { drawing = false; }));
+  }
 
   // ── Init ───────────────────────────────────────────────────────────────
   showStep('intro');
