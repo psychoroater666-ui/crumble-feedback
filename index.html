@@ -330,6 +330,13 @@
   // never shows a customer a blank screen.
   // ═══════════════════════════════════════════════════════════════════════
   const FORM_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx0Zj6y3mM2biuuXuSuHf81zF8RJXI_WpXwcWUkVCxnJd8e_h-sqJ9wlDt-SjlKN0dL/exec';
+  // Submissions go through our own Worker rather than straight to Apps Script.
+  // The Worker gives Apps Script a few seconds to record it and return the
+  // scratch-card stamp; if that does not happen it keeps the response safely
+  // and retries every minute. Before this, a busy Apps Script showed the
+  // customer an error and their feedback was lost.
+  // Loading the form's questions still comes from Apps Script (get_form).
+  const SUBMIT_ENDPOINT = 'https://dashboard.crumblesentinel.com/hook/form';
   const FORM_TOKEN    = 'crumble-dlv-7Kq9pW2xN4mR8vL3sT6yB1zH5jF0cA';
   const FORM_ID       = (new URLSearchParams(location.search).get('f') || 'delivery').toLowerCase();
 
@@ -1067,7 +1074,7 @@
 
     for(let i = 1; i <= 3; i++){
       try{
-        const res = await fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), redirect: 'follow' });
+        const res = await fetch(SUBMIT_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow' });
         const data = JSON.parse(await res.text());
         if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; try { FA.submitted(); } catch(e){} showStamp(data.stamp); return; }
         submitFailed(data.message || 'We couldn\'t record your response.'); submitting = false; return;
