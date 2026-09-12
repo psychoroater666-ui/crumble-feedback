@@ -822,7 +822,16 @@
   function showStamp(st){ renderStamp(st); }
   function renderStamp(st){
     const pending = !st;
-    if(st && !st.awarded && !st.reward) return;
+    // Nothing to reveal: clear the "your stamp is on its way" card instead of
+    // leaving it on screen for ever. It used to just return, so a customer who
+    // earned no stamp -- or whose submission was queued -- sat looking at a
+    // scratch card that would never resolve.
+    if(st && !st.awarded && !st.reward){
+      const h0 = document.getElementById('stampHost');
+      const w0 = h0 && h0.querySelector('.stamp-wrap');
+      if(w0) w0.remove();
+      return;
+    }
     const host = document.getElementById('stampHost'); if(!host) return;
     const existing = host.querySelector('.stamp-wrap');
     if(existing && !pending && existing.dataset.pending !== '1') return;
@@ -1076,7 +1085,7 @@
       try{
         const res = await fetch(SUBMIT_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow' });
         const data = JSON.parse(await res.text());
-        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; try { FA.submitted(); } catch(e){} showStamp(data.stamp); return; }
+        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; try { FA.submitted(); } catch(e){} showStamp(data.stamp || { awarded: false }); return; }
         submitFailed(data.message || 'We couldn\'t record your response.'); submitting = false; return;
       }catch(err){
         if(i < 3){ setSubmitState(true, 'Retrying… (' + (i+1) + '/3)'); await new Promise(r => setTimeout(r, 900*i)); }
