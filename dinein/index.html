@@ -239,6 +239,25 @@
            the conditional follow-ups that weren't selected.
            ═══════════════════════════════════════════════════════════════ -->
 
+      <!-- CHOOSE — the QR and its link are printed and pasted everywhere, so
+           they must never change. Instead the same link now opens a choice:
+           the month's product form, or the dine-in survey exactly as before.
+           Anyone who picks dine-in sees precisely what they saw yesterday. -->
+      <div class="step active" data-key="choose">
+        <div class="eyebrow">We'd love your feedback!</div>
+        <h2 class="title" id="chooseTitle">What would you like to tell us about?</h2>
+        <div class="nav-row single" style="flex-direction:column;gap:12px;">
+          <button class="btn-next full" id="dropBtn" type="button">
+            <span id="dropBtnLabel">This month's drop</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+          <button class="btn-next full" id="dineinBtn" type="button" style="background:transparent;color:var(--ink,#1b1630);border:1.5px solid rgba(0,0,0,.15);">
+            Continue to Dine-In Survey
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
       <!-- INTRO -->
       <div class="step" data-key="intro">
         <div class="eyebrow">Thank you for choosing Crumble!</div>
@@ -632,10 +651,12 @@
       flow.push('serve_time', 'order_time', 'comments');
     }
     flow.push('thanks');
-    return flow;
+    // The choice screen sits ahead of everything, so Previous from the intro
+    // returns here rather than dead-ending.
+    return ['choose'].concat(flow);
   }
 
-  let currentKey = 'intro';
+  let currentKey = 'choose';
 
   function showStep(key){
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -659,6 +680,36 @@
       showStep(flow[idx - 1]);
     }
   }
+
+  // ── The choice screen ──────────────────────────────────────────────────
+  // The product form is a separate form, served by the same generic form page
+  // at ?f=<id>. The branch we have already detected travels with them, so
+  // nobody is asked to pick a city and a branch by hand when the phone
+  // already knows.
+  const DROP_FORM_ID  = 'monthlydrop';
+  const DROP_FORM_URL = 'https://feedback.crumblesentinel.com/';
+  // The label changes each month with the product; everything else stays.
+  const DROP_LABEL    = 'Dot Cake Cookie Form';
+
+  (function setupChoose(){
+    const dropBtn = document.getElementById('dropBtn');
+    const dineBtn = document.getElementById('dineinBtn');
+    const label   = document.getElementById('dropBtnLabel');
+    if(label) label.textContent = DROP_LABEL;
+    if(dineBtn) dineBtn.onclick = () => flowNext();
+    if(dropBtn) dropBtn.onclick = () => {
+      const q = new URLSearchParams();
+      q.set('f', DROP_FORM_ID);
+      // Whatever we know about where they are, so the product form does not
+      // have to ask again. state.location is set by the GPS step; the QR's
+      // own ?branch= wins over it, as it does everywhere else.
+      const fromQR = new URLSearchParams(location.search).get('branch') || '';
+      const known  = fromQR || (typeof state !== 'undefined' ? (state.location || '') : '');
+      if(known) q.set('branch', known);
+      q.set('src', 'dinein-qr');
+      location.href = DROP_FORM_URL + '?' + q.toString();
+    };
+  })();
 
   // ── Intro validation ───────────────────────────────────────────────────
   const nameInput = document.getElementById('nameInput');
