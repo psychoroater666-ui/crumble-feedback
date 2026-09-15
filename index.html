@@ -818,9 +818,33 @@
   // giving anyone a way to farm stamps.
   // The card appears the moment they submit, with the numbers filled in when
   // the server answers (usually before they finish scratching).
-  function showStampPending(){ renderStamp(null); }
-  function showStamp(st){ renderStamp(st); }
+  /* Which forms earn a stamp.
+   *
+   * This page renders EVERY form -- ?f=delivery, ?f=monthlydrop, whatever is
+   * built next -- so the scratch card was being shown to everyone who
+   * submitted anything. The monthly product drop gave out stamps it was never
+   * meant to give, on a thank-you screen nobody had asked for.
+   *
+   * Stamps belong to the form, not to the page. Add a form id here to give it
+   * a card; leave it out and it simply thanks them.
+   */
+  const STAMP_FORMS = ['delivery'];
+  const EARNS_STAMP = STAMP_FORMS.indexOf(FORM_ID) !== -1;
+
+  function showStampPending(){ if(EARNS_STAMP) renderStamp(null); }
+  function showStamp(st){ if(EARNS_STAMP) renderStamp(st); }
   function renderStamp(st){
+    // Belt and braces: every call site is guarded above, but a card drawn
+    // here would promise a reward the backend is not going to issue.
+    if(!EARNS_STAMP){
+      const h = document.getElementById('stampHost');
+      // The helpline used to live inside the scratch card, so taking the card
+      // away would have taken the only way to reach a person with it. It is
+      // the one part worth keeping on every form.
+      if(h) h.innerHTML = '<div class="stamp-note" style="margin-top:18px;">'
+        + 'Something wrong with your order?<br><b>Helpline +92 335 7555722</b></div>';
+      return;
+    }
     const pending = !st;
     // Nothing to reveal: clear the "your stamp is on its way" card instead of
     // leaving it on screen for ever. It used to just return, so a customer who
