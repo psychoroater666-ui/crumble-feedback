@@ -1001,7 +1001,18 @@
   }
 
   // ── Init ───────────────────────────────────────────────────────────────
-  showStep('intro');
+  // The choice screen first, not the intro. This line used to say 'intro',
+  // which put the choice step on the page and then immediately replaced it --
+  // the markup was right and nobody ever saw it.
+  //
+  // A link that names the survey outright skips the choice: the QR on the
+  // table is the only thing that should ask, and anyone arriving from an
+  // order email or a direct link already said what they came for.
+  (function(){
+    const q = new URLSearchParams(location.search);
+    const skip = q.get('skip') === 'choice' || q.get('go') === 'dinein';
+    showStep(skip ? 'intro' : 'choose');
+  })();
 </script>
 
 </body>
