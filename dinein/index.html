@@ -688,14 +688,31 @@
   // already knows.
   const DROP_FORM_ID  = 'monthlydrop';
   const DROP_FORM_URL = 'https://feedback.crumblesentinel.com/';
-  // The label changes each month with the product; everything else stays.
-  const DROP_LABEL    = 'Dot Cake Cookie Form';
+  // The label changes each month with the product. It is read from the
+  // Worker, where the Owner sets it in the dashboard -- so a new drop needs
+  // no edit here. The constant is only what shows if that read fails.
+  const DROP_LABEL    = 'This month\u2019s drop';
+  const DROP_INFO_URL = 'https://dashboard.crumblesentinel.com/hook/drop';
 
   (function setupChoose(){
     const dropBtn = document.getElementById('dropBtn');
     const dineBtn = document.getElementById('dineinBtn');
     const label   = document.getElementById('dropBtnLabel');
     if(label) label.textContent = DROP_LABEL;
+    // Fill in the real product name once it arrives. Cached for a day so a
+    // slow network never delays the screen: the default shows meanwhile.
+    (async () => {
+      try {
+        const k = 'crumble_drop_v1';
+        const saved = JSON.parse(localStorage.getItem(k) || 'null');
+        if(saved && saved.product && Date.now() - saved.t < 86400000 && label) label.textContent = saved.product + ' Form';
+        const r = await fetch(DROP_INFO_URL, { cache: 'no-store' }).then(x => x.json());
+        if(r && r.product){
+          if(label) label.textContent = r.product + ' Form';
+          localStorage.setItem(k, JSON.stringify({ product: r.product, t: Date.now() }));
+        }
+      } catch(e){}
+    })();
     if(dineBtn) dineBtn.onclick = () => flowNext();
     if(dropBtn) dropBtn.onclick = () => {
       const q = new URLSearchParams();
