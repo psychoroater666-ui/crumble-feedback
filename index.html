@@ -1091,6 +1091,13 @@
     }
     const payload = {
       action: 'submit', formId: CFG.id, token: FORM_TOKEN,
+      // The column map this page rendered from, so the Worker can file the
+      // answer into D1 the instant it arrives without asking Apps Script
+      // for the form's config -- the one dependency that was making direct
+      // intake fail whenever Apps Script was busy.
+      columns: Object.fromEntries((CFG.questions || []).map(q => [q.id, q.column || ''])),
+      types: Object.fromEntries((CFG.questions || []).map(q => [q.id, q.type || ''])),
+      negativeColumns: Object.fromEntries((CFG.questions || []).filter(q => q.negativeColumn).map(q => [q.id, q.negativeColumn])),
       answers: Object.assign({}, answers, Object.fromEntries(Object.entries(answers).map(([k,v]) => [k, Array.isArray(v) ? v.join(', ') : v]))),
       timeTaken: fmtTimeTaken(Date.now() - startedAt),
       // Lets the backend recognise a retry of THIS submission rather than
