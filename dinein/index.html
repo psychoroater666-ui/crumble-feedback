@@ -970,7 +970,14 @@
     el('branchDetecting').style.display = 'none'; el('branchDetected').style.display = 'none'; el('branchFallback').style.display = 'block';
     el('branchNext').disabled = !state.location;
   }
-  function checkBranch(){ const v = el('branchSelect').value; state.location = v || null; META.branchSource = 'manual'; el('branchNext').disabled = !v; }
+  function checkBranch(){
+      const v = el('branchSelect').value;
+      // Only ever a name this page knows. Belt and braces alongside the value
+      // fix above: a branch we do not recognise is no branch at all.
+      state.location = Object.prototype.hasOwnProperty.call(BRANCH_COORDS, v) ? v : null;
+      META.branchSource = 'manual';
+      el('branchNext').disabled = !state.location;
+  }
   function startGeo(){
     if(geoRequested) return; geoRequested = true;
     const q = (new URLSearchParams(location.search).get('branch') || '').trim().toLowerCase();
@@ -983,7 +990,12 @@
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }
-  Object.keys(BRANCH_COORDS).forEach(n => { const o = document.createElement('option'); o.textContent = n; el('branchSelect').appendChild(o); });
+  // v1.2: an option with no value submits its own text -- and a guest whose
+  // phone offers to translate the page gets translated text. One submission
+  // arrived with the branch as "ایم ایم عالم روڈ", which then counted as a
+  // branch of its own. Setting the value explicitly keeps the English name
+  // whatever language the page is shown in.
+  Object.keys(BRANCH_COORDS).forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; el('branchSelect').appendChild(o); });
   // ask for location as soon as the customer reaches the intro (same timing as delivery)
   document.getElementById('introNext').addEventListener('click', startGeo);
 
