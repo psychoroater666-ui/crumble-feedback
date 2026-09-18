@@ -555,7 +555,8 @@
       <div class="step" data-key="comments">
         <div class="eyebrow">Your feedback matters!</div>
         <h2 class="title">Any other thoughts or suggestions for us?</h2>
-        <textarea class="comment" id="commentInput" placeholder="Type here..."></textarea>
+        <textarea class="comment" id="commentInput" placeholder="Type here..."
+                  oninput="try{ if(this.value.length < (this.dataset.max||0)) FA.erased(); this.dataset.max = Math.max(this.value.length, this.dataset.max||0); }catch(e){}"></textarea>
         <div class="nav-row">
           <button class="btn-prev" onclick="flowPrev()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 19l-7-7 7-7"/></svg>
@@ -664,6 +665,7 @@
     if(el) el.classList.add('active');
     currentKey = key;
     window.scrollTo(0,0);
+    try { if (typeof FA !== 'undefined') FA.step(key); } catch(e){}
   }
 
   function flowNext(){
@@ -674,6 +676,7 @@
     }
   }
   function flowPrev(){
+    try { if (typeof FA !== 'undefined') FA.back(); } catch(e){}
     const flow = buildFlow();
     const idx = flow.indexOf(currentKey);
     if(idx > 0){
@@ -751,7 +754,9 @@
   document.getElementById('ratingRow').addEventListener('click', function(e){
     const b = e.target.closest('.rating-circle'); if(!b) return;
     document.querySelectorAll('#ratingRow .rating-circle').forEach(el => el.classList.remove('selected'));
-    b.classList.add('selected'); state.rating = parseInt(b.dataset.val, 10);
+    b.classList.add('selected');
+    try { if (typeof FA !== 'undefined' && state.rating != null && state.rating !== parseInt(b.dataset.val, 10)) FA.ratingChanged(b.dataset.val); } catch(e){}
+    state.rating = parseInt(b.dataset.val, 10);
     setTimeout(() => flowNext(), 180);
   });
 
@@ -831,6 +836,74 @@
   // customer an error and their feedback was lost.
   const POST_URL = 'https://dashboard.crumblesentinel.com/hook/form';
   const FORM_TOKEN = 'crumble-dlv-7Kq9pW2xN4mR8vL3sT6yB1zH5jF0cA';
+
+  /* ── v1.1: what happened before a submission ────────────────────────────
+     The other forms have recorded this since they were built; dine-in never
+     has, so a guest who filled the form in and never reached the end left no
+     trace at all. When a branch said "we collected seven and only three
+     showed", there was nothing to check it against -- we could prove what
+     arrived and what was refused, and nothing about what was started.
+
+     Anonymous by design: no name, phone or comment. Somebody who has not
+     submitted has not agreed to anything.
+
+     Events go through the Worker, which relays them, so this uses the same
+     address the submission does and never needs a second permission. */
+  const FA = (function(){
+    const session = 'fa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    const sent = {};                        // one of each event per step per session
+    let submitted = false, backs = 0, erased = 0;
+    let visitor = 'new';
+    try {
+      visitor = localStorage.getItem('crumble_seen') ? 'returning' : 'new';
+      localStorage.setItem('crumble_seen', '1');
+    } catch (e) {}
+    const secs = () => Math.round((Date.now() - state.startedAt) / 1000);
+    function send(event, step, extra){
+      const key = event + '|' + (step || '');
+      if (sent[key]) return;
+      sent[key] = 1;
+      const body = Object.assign({
+        action: 'form_event', token: FORM_TOKEN, form: 'dinein',
+        event: event, step: step || '', branch: state.location || '',
+        source: (new URLSearchParams(location.search).get('src') || 'dinein-qr'),
+        device: META.device, os: META.os, session: session, seconds: secs(),
+        link: location.href.slice(0, 200), screen: META.screen,
+        visitor: visitor, backs: backs, erased: erased
+      }, extra || {});
+      // Tracking must never delay or break a customer's feedback.
+      try {
+        const payload = JSON.stringify(body);
+        if (event === 'abandoned' && navigator.sendBeacon) {
+          navigator.sendBeacon(POST_URL, new Blob([payload], { type: 'application/json' }));
+          return;
+        }
+        fetch(POST_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload }).catch(() => {});
+      } catch (e) {}
+    }
+    // Leaving after a successful submission is not abandonment. The other
+    // forms record both, which is why their abandoned counts read high --
+    // a guest who finished and closed the tab appears as a drop-off.
+    function leaving(){
+      if (submitted) return;
+      send('abandoned', currentKey || '');
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') leaving(); });
+    window.addEventListener('pagehide', leaving);
+    return {
+      open(){ send('open', ''); },
+      firstTap(){ send('first_tap', ''); },
+      step(k){ send('step', k); },
+      submitted(){ submitted = true; send('submitted', currentKey || 'comments'); },
+      back(){ backs++; },
+      erased(){ erased++; },
+      ratingChanged(v){ send('rating_changed', '', { choice: String(v || '') }); }
+    };
+  })();
+  FA.open();
+  ['pointerdown', 'keydown'].forEach(ev =>
+    document.addEventListener(ev, function once(){ FA.firstTap(); ['pointerdown','keydown'].forEach(e2 => document.removeEventListener(e2, once)); }, { once: false }));
+
   let submitting = false;
   function submitForm(){
     if(submitting) return;
@@ -846,7 +919,8 @@
     err.style.display = 'none'; submitting = true;
     fetch(POST_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       .then(r => r.json())
-      .then(r => { if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); /* no stamp on dine-in */; })
+      .then(r => { try { FA.submitted(); } catch(e){}
+                   if(r && r.code === 'limit'){ showStep('thanks'); const t = document.querySelector('.step[data-key="thanks"] .title'); if(t) t.textContent = r.message; return; } if(!r || r.status !== 'success') throw new Error((r && r.message) || 'Could not submit'); /* no stamp on dine-in */; })
       .catch(e => { err.textContent = 'Could not send your feedback: ' + (e.message || e) + '. Please try again.'; err.style.display = 'block'; })
       .finally(() => { submitting = false; step.classList.remove('sending'); });
   }
