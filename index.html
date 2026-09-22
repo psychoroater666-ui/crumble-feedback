@@ -165,6 +165,20 @@
     display:flex; align-items:center; justify-content:center; margin-bottom:16px;
   }
 
+  /* v1.3: the answer before the thank-you (same as the dine-in page) */
+  .phone-hint{ width:100%; text-align:left; font-size:.76rem; color:var(--ink-muted); margin:6px 2px 4px; }
+  .phone-hint.bad{ color:#B91C1C; font-weight:600; }
+  .phone-row.bad .phone-input, .phone-row.bad .cc{ border-color:#FCA5A5; }
+  .phone-input{ min-width:0; }
+  .btn-next .spin{ width:15px; height:15px; border-radius:50%; border:2.4px solid rgba(255,255,255,.35); border-top-color:#fff; animation:fSpin .8s linear infinite; display:inline-block; }
+  @keyframes fSpin{ to{ transform:rotate(360deg); } }
+  .step.is-sending textarea{ opacity:.55; }
+  .step.is-sending .btn-prev{ opacity:.35; pointer-events:none; }
+  .send-err{ width:100%; margin-top:14px; padding:14px; border-radius:14px; background:#FEF2F2; border:1.5px solid #FECACA; text-align:left; }
+  .send-err b{ display:block; color:#B91C1C; font-size:.9rem; margin-bottom:4px; }
+  .send-err span{ display:block; color:#7F1D1D; font-size:.84rem; line-height:1.45; }
+  .send-err button{ margin-top:12px; width:100%; padding:12px; border-radius:12px; border:none; background:var(--blue); color:#fff; font:600 .92rem 'Inter',sans-serif; cursor:pointer; }
+  .step.has-err .btn-next{ display:none; }
   .submit-error{
     width:100%; margin-top:14px; padding:12px 14px; border-radius:12px;
     background:#FEF2F2; border:1.5px solid #FECACA; color:#B91C1C;
@@ -553,7 +567,8 @@
       }
       if(phone){
         h += '<div class="phone-row"><div class="cc">+92 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7A7488" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></div>'
-           + '<input type="tel" class="phone-input" id="phoneInput" inputmode="numeric" placeholder="' + esc(phone.placeholder || 'Phone Number') + '"></div>';
+           + '<input type="tel" class="phone-input" id="phoneInput" inputmode="numeric" autocomplete="tel-national" placeholder="' + esc(phone.placeholder || 'Phone Number') + '"></div>'
+           + '<div class="phone-hint" id="phoneHint">Your mobile number, e.g. 300 1234567</div>';
       }
       h += '<div id="err-welcome" class="submit-error" style="display:none;"></div>';
       h += navRow({ prev: false, next: true, full: true, onNext: 'proceedFromWelcome()' });
@@ -646,6 +661,7 @@
     document.querySelectorAll('textarea[data-q]').forEach(t => t.addEventListener('input', () => { answers[t.dataset.q] = t.value; }));
     const ph = document.getElementById('phoneInput');
     if(ph) ph.addEventListener('keydown', e => { if(e.key === 'Enter') proceedFromWelcome(); });
+    if(ph){ ph.addEventListener('input', () => showPhoneState(false)); ph.addEventListener('blur', () => showPhoneState(true)); }
   }
 
   // Multi-select questions with a negativeTitle flip wording based on the
@@ -663,6 +679,7 @@
 
   // ─── navigation ───────────────────────────────────────────────────────
   function goTo(n){
+    try { if(typeof clearSendErr === 'function' && n !== steps.length - 2) clearSendErr(); } catch(e){}
     try { const ta = document.querySelector('.step.active textarea'); if(ta) FA.watchComment(ta); } catch(e){}
     try { const st = steps[Math.max(0, Math.min(n, steps.length - 1))]; FA.step(st && st.q ? st.q.id : (st ? st.kind : 'step' + n)); } catch(e){}
     current = Math.max(0, Math.min(n, steps.length - 1));
@@ -696,6 +713,31 @@
     return d ? '+92' + d : '';
   }
 
+  /* v1.3: the number is checked while it is typed -- a mobile number is 10
+     digits starting with 3 (the 0 or 92 in front is optional). */
+  function phoneDigits10(raw){
+    let d = String(raw || '').replace(/[^0-9]/g, '');
+    if(d.length === 12 && d.indexOf('92') === 0) d = d.slice(2);
+    if(d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+    return d;
+  }
+  let phoneTouched = false;
+  function showPhoneState(blurred){
+    const ph = document.getElementById('phoneInput'), hint = document.getElementById('phoneHint');
+    if(!ph || !hint) return;
+    if(blurred) phoneTouched = true;
+    const d = phoneDigits10(ph.value), ok = /^3\d{9}$/.test(d);
+    let msg = '';
+    if(d.length && !ok){
+      if(d.length > 10) msg = 'That number looks too long \u2014 enter 10 digits, e.g. 300 1234567';
+      else if(d.charAt(0) !== '3') msg = 'Please enter a mobile number starting with 3, e.g. 300 1234567';
+      else if(phoneTouched || d.length >= 10) msg = 'That number looks too short \u2014 enter all 10 digits, e.g. 300 1234567';
+    }
+    const row = ph.closest('.phone-row'); if(row) row.classList.toggle('bad', !!msg);
+    hint.classList.toggle('bad', !!msg);
+    hint.textContent = msg || 'Your mobile number, e.g. 300 1234567';
+  }
+
   function proceedFromWelcome(){
     const name = q('name');
     if(name){
@@ -705,8 +747,11 @@
     }
     const phone = q('phone');
     if(phone){
-      const v = normalisePhone(document.getElementById('phoneInput').value);
-      if(phone.required && !/^\+92\d{9,11}$/.test(v)){
+      const raw = document.getElementById('phoneInput').value;
+      const d10 = phoneDigits10(raw);
+      const v = /^3\d{9}$/.test(d10) ? '+92' + d10 : normalisePhone(raw);
+      if((phone.required || String(raw).trim()) && !/^\+923\d{9}$/.test(v)){
+        showPhoneState(true);
         showErr('err-welcome', 'Please enter a valid mobile number, e.g. 0300 1234567.');
         return;
       }
@@ -1068,14 +1113,55 @@
   }
 
 
-  // Shown on the thank-you screen if the background send did not succeed.
-  function submitFailed(msg){
-    const host = document.getElementById('stampHost'); if(!host) return;
-    host.innerHTML = '<div style="max-width:320px;margin:20px auto 0;padding:14px 16px;border-radius:12px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:13px;line-height:1.55;text-align:center;">'
-      + '<b>Not sent yet.</b><br>' + String(msg || '') + '<br>'
-      + '<button onclick="retrySubmit()" style="margin-top:10px;padding:9px 16px;border:none;border-radius:9px;background:#010197;color:#fff;font:700 13px Inter,sans-serif;cursor:pointer;">Try again</button></div>';
+  /* v1.3: thank you only once the server has it.
+     The thank-you screen used to appear the moment Submit was pressed, with a
+     failure shown on it afterwards ("Not sent yet") -- a guest who had
+     already been thanked walked away. Now the button says "Sending…" until
+     the server answers; a refusal is explained on this screen with a button
+     that fixes it, a lost connection offers Try again, and the same clientId
+     is reused on every retry so a submission that did arrive is never
+     recorded twice. A limit or a repeat is not an error: the guest is thanked
+     with its own message, as before. */
+  let attemptId = null;
+  function lastStepEl(){ return document.querySelector('.step[data-step="' + (steps.length - 2) + '"]'); }
+  function clearSendErr(){
+    const st = lastStepEl(); if(!st) return;
+    st.classList.remove('has-err');
+    const box = st.querySelector('.send-err'); if(box) box.remove();
   }
-  function retrySubmit(){ const h = document.getElementById('stampHost'); if(h) h.innerHTML = ''; submitting = false; submitForm(); }
+  function showSendErr(title, text, btnLabel, onBtn){
+    const st = lastStepEl(); if(!st) return;
+    clearSendErr();
+    const esc2 = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const box = document.createElement('div');
+    box.className = 'send-err'; box.setAttribute('role', 'alert');
+    box.innerHTML = '<b>' + esc2(title) + '</b><span>' + esc2(text) + '</span><button type="button">' + esc2(btnLabel) + '</button>';
+    box.querySelector('button').onclick = onBtn;
+    const nav = st.querySelector('.nav-row');
+    if(nav) nav.parentNode.insertBefore(box, nav); else st.appendChild(box);
+    st.classList.add('has-err');
+  }
+  function setSending(on){
+    const st = lastStepEl(), btn = document.getElementById('submitBtn');
+    if(st) st.classList.toggle('is-sending', on);
+    if(!btn) return;
+    if(on){
+      if(!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> <span>Sending\u2026</span>';
+    } else { btn.disabled = false; if(btn.dataset.label) btn.innerHTML = btn.dataset.label; }
+  }
+  function thankWith(message, stamp){
+    try { FA.submitted(); } catch(e){}
+    clearSendErr();
+    goTo(steps.length - 1);
+    if(message){
+      const t = document.querySelector('.step[data-step="' + (steps.length - 1) + '"] .title');
+      if(t) t.textContent = message;
+      showStamp({ awarded: false });
+    } else showStamp(stamp || { awarded: false });
+  }
+  // Kept for anything still calling it.
+  function retrySubmit(){ submitting = false; submitForm(); }
 
   async function submitForm(){
     if(submitting) return;
@@ -1089,43 +1175,55 @@
         return;
       }
     }
+    if(!attemptId) attemptId = 'dlv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     const payload = {
       action: 'submit', formId: CFG.id, token: FORM_TOKEN,
       // The column map this page rendered from, so the Worker can file the
       // answer into D1 the instant it arrives without asking Apps Script
-      // for the form's config -- the one dependency that was making direct
-      // intake fail whenever Apps Script was busy.
+      // for the form's config.
       columns: Object.fromEntries((CFG.questions || []).map(q => [q.id, q.column || ''])),
       types: Object.fromEntries((CFG.questions || []).map(q => [q.id, q.type || ''])),
       negativeColumns: Object.fromEntries((CFG.questions || []).filter(q => q.negativeColumn).map(q => [q.id, q.negativeColumn])),
       answers: Object.assign({}, answers, Object.fromEntries(Object.entries(answers).map(([k,v]) => [k, Array.isArray(v) ? v.join(', ') : v]))),
       timeTaken: fmtTimeTaken(Date.now() - startedAt),
-      // Lets the backend recognise a retry of THIS submission rather than
-      // treating it as a second one. The dine-in form has always sent one.
-      clientId: 'dlv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+      clientId: attemptId,                   // the same on every retry of THIS submission
       meta: metaPayload()
     };
     submitting = true;
     showErr(findSubmitErrorId(), '');
-    // Apps Script takes 1-3s to answer on a cold start. Making the customer
-    // watch that is the whole complaint, so the thank-you screen appears
-    // immediately and the send continues in the background. A failure is shown
-    // honestly (with a Retry) rather than being hidden.
-    goTo(steps.length - 1);
-    showStampPending();                     // card is on screen before the network answers
-    setSubmitState(true, 'Submitting…');
-
-    for(let i = 1; i <= 3; i++){
+    clearSendErr();
+    setSending(true);
+    let data = null, lastErr = null;
+    for(let i = 1; i <= 3 && !data; i++){
       try{
-        const res = await fetch(SUBMIT_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow' });
-        const data = JSON.parse(await res.text());
-        if(data.status === 'success' || data.status === 'duplicate'){ submitting = false; try { FA.submitted(); } catch(e){} showStamp(data.stamp || { awarded: false }); return; }
-        submitFailed(data.message || 'We couldn\'t record your response.'); submitting = false; return;
+        const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const timer = ctl ? setTimeout(() => { try { ctl.abort(); } catch(e){} }, 20000) : null;
+        const res = await fetch(SUBMIT_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow', signal: ctl ? ctl.signal : undefined });
+        if(timer) clearTimeout(timer);
+        data = JSON.parse(await res.text());
       }catch(err){
-        if(i < 3){ setSubmitState(true, 'Retrying… (' + (i+1) + '/3)'); await new Promise(r => setTimeout(r, 900*i)); }
+        lastErr = err;
+        if(i < 3) await new Promise(r => setTimeout(r, 900 * i));
       }
     }
-    submitFailed('Network problem — please check your connection.'); submitting = false;
+    submitting = false; setSending(false);
+    if(!data){
+      showSendErr('No connection', 'Your feedback hasn\u2019t been sent yet. Check the internet and try again \u2014 nothing you chose is lost.', 'Try again', () => { clearSendErr(); submitForm(); });
+      return;
+    }
+    if(data.status === 'success' || data.status === 'duplicate'){ thankWith(null, data.stamp); return; }
+    // Answers, not failures: thanked, with the reason in the title.
+    if(data.code === 'limit' || data.code === 'repeat' || data.code === 'duplicate_order' || /already/i.test(data.message || '')){ thankWith(data.message); return; }
+    const msg = data.message || 'Something went wrong on our side. Please try again.';
+    if(data.code === 'phone' || /mobile number|phone/i.test(msg)){
+      attemptId = null;
+      showSendErr('Your feedback wasn\u2019t sent', msg, 'Fix my number', () => {
+        clearSendErr(); goTo(0); showPhoneState(true);
+        setTimeout(() => { const ph = document.getElementById('phoneInput'); if(ph) try { ph.focus(); } catch(e){} }, 80);
+      });
+      return;
+    }
+    showSendErr('Your feedback wasn\u2019t sent', msg, 'Try again', () => { clearSendErr(); submitForm(); });
   }
 
   // ─── boot ─────────────────────────────────────────────────────────────
