@@ -562,7 +562,7 @@
     const bar = document.getElementById('fprog'); if(!bar) return;
     const s = steps[current];
     if(!s || s.kind !== 'question'){ bar.classList.add('off'); return; }
-    const vis = []; steps.forEach((x, i) => { if(x.kind === 'question' && stepVisible(i)) vis.push(i); });
+    const vis = []; steps.forEach((x, i) => { if(x.kind === 'question' && (stepVisible(i) || i === current)) vis.push(i); });
     const pos = vis.indexOf(current) + 1;
     bar.classList.remove('off');
     bar.querySelector('i').style.width = Math.round(pos / Math.max(1, vis.length) * 100) + '%';
@@ -1272,6 +1272,8 @@
   }
 
 
+  /* v1.5: the builder's preview opens on the question being edited (message
+     field `focus`: a question id, '__welcome' or '__done'). */
   /* v1.4 (Form Builder, deploy 1): new question types -- star rating
      (rating + style 'stars'), recommend 0-10 slider (nps), yes/no, dropdown,
      short answer, long answer, email, date; "show only if" rules (showIf:
@@ -1411,7 +1413,14 @@
         const keep = CFG ? current : 0;
         CFG = m.form; designApply(); geoRequested = false; branchAutoAdvanceOff = true;
         buildSteps(); renderAll();
-        goTo(m.reset ? 0 : Math.min(keep, steps.length - 1));
+        // v1.5: the builder can point the preview at the question being edited.
+        let to = m.reset ? 0 : Math.min(keep, steps.length - 1);
+        if(m.focus === '__welcome') to = 0;
+        else if(m.focus === '__done') to = steps.length - 1;
+        else if(m.focus){ const qf = (CFG.questions || []).find(x => x.id === m.focus);
+          if(qf && (qf.type === 'phone' || qf.type === 'name')) to = 0;
+          else { const ix = steps.findIndex(s => s.kind === 'question' && s.q.id === m.focus); if(ix >= 0) to = ix; } }
+        goTo(to);
         if(current > 0) showBranchFallback();
       });
       return;
