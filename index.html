@@ -591,10 +591,22 @@
   function sameConfig(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
 
   // ─── load config ──────────────────────────────────────────────────────
+  /* v1.6: the questions come from Cloudflare first (milliseconds, Worker v5.4),
+     Apps Script only if that fails -- and neither may hang the page. */
+  async function getJSON(url, ms){
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+    try { const r = await fetch(url, { redirect: 'follow', signal: ctl ? ctl.signal : undefined }); return await r.json(); }
+    finally { if(t) clearTimeout(t); }
+  }
   async function loadConfig(){
     try{
-      const res = await fetch(FORM_ENDPOINT + '?action=get_form&f=' + encodeURIComponent(FORM_ID) + '&t=' + Date.now(), { redirect: 'follow' });
-      const data = await res.json();
+      const data = await getJSON(SUBMIT_ENDPOINT + '?f=' + encodeURIComponent(FORM_ID), 6000);
+      if(data && data.status === 'success' && data.form && Array.isArray(data.form.questions) && data.form.questions.length) return data.form;
+      if(data && data.status === 'error' && data.code === 'not_found') return { notFound: true };
+    }catch(_){ /* try Apps Script */ }
+    try{
+      const data = await getJSON(FORM_ENDPOINT + '?action=get_form&f=' + encodeURIComponent(FORM_ID) + '&t=' + Date.now(), 10000);
       if(data && data.status === 'success' && data.form && Array.isArray(data.form.questions) && data.form.questions.length){
         return data.form;
       }
@@ -602,7 +614,7 @@
         return { notFound: true };
       }
     }catch(_){ /* fall through to default */ }
-    return FORM_ID === 'delivery' ? DEFAULT_CONFIG : { notFound: true };
+    return FORM_ID === 'delivery' ? DEFAULT_CONFIG : { unavailable: true };
   }
 
   // ─── render ───────────────────────────────────────────────────────────
@@ -1438,8 +1450,19 @@
     const initial = readCache() || (FORM_ID === 'delivery' ? DEFAULT_CONFIG : null);
     if(initial) apply(initial);
 
+    // v1.6: while a first-time visitor waits, say so -- and never spin forever.
+    let slowT = null;
+    if(!initial){ slowT = setTimeout(() => { const s = document.querySelector('#steps .detect-box span:last-child'); if(s) s.textContent = 'Still loading \u2014 slow connection\u2026'; }, 4000); }
+    const showRetry = () => {
+      document.getElementById('steps').innerHTML = '<div class="step active"><div class="eyebrow">Crumble</div><h2 class="title">We couldn\u2019t load the survey.</h2>'
+        + '<p style="color:var(--muted,#64748B);margin:6px 0 16px;">Your connection may be slow. Please try again.</p>'
+        + '<button type="button" class="btn-next full" onclick="location.reload()">Try again</button></div>';
+    };
+
     // 2) fetch the live config in the background
     const live = await loadConfig();
+    if(slowT) clearTimeout(slowT);
+    if(live.unavailable){ if(!initial) showRetry(); return; }
     if(live.notFound){
       clearCache();
       if(!initial) showNotFound();            // unknown form, nothing to show
