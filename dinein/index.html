@@ -178,6 +178,7 @@
   .rating-row{ margin:18px 0 6px; }
   .sending{ opacity:.6; pointer-events:none; }
   .err{ color:#DC2626; font-size:13px; margin:10px 0 0; font-weight:600; display:none; }
+  /* v1.4: the survey itself moved to the Form Builder (?f=dinein); see setupChoose. */
   /* v1.3: the answer before the thank-you */
   .phone-hint{ width:100%; text-align:left; font-size:.76rem; color:var(--ink-muted); margin:-2px 2px 14px; }
   .phone-hint.bad{ color:#B91C1C; font-weight:600; }
@@ -734,7 +735,19 @@
         }
       } catch(e){}
     })();
-    if(dineBtn) dineBtn.onclick = () => flowNext();
+    /* v1.4: the Dine-In survey is now a Form Builder form (?f=dinein), edited in
+       Sentinel's Form Builder. This page keeps only its first screen -- the
+       choice between this month's drop and the survey -- and passes the
+       table's ?branch= on, exactly as the drop button does. To go back to the
+       hand-built survey, upload dinein v1.3 again. */
+    if(dineBtn) dineBtn.onclick = () => {
+      const q = new URLSearchParams();
+      q.set('f', 'dinein');
+      const fromQR = new URLSearchParams(location.search).get('branch') || '';
+      if(fromQR) q.set('branch', fromQR);
+      q.set('src', 'dinein-qr');
+      location.href = DROP_FORM_URL + '?' + q.toString();
+    };
     if(dropBtn) dropBtn.onclick = () => {
       const q = new URLSearchParams();
       q.set('f', DROP_FORM_ID);
