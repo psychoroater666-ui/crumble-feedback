@@ -178,7 +178,8 @@
   .rating-row{ margin:18px 0 6px; }
   .sending{ opacity:.6; pointer-events:none; }
   .err{ color:#DC2626; font-size:13px; margin:10px 0 0; font-weight:600; display:none; }
-  /* v1.4: the survey itself moved to the Form Builder (?f=dinein); see setupChoose. */
+  /* v1.4: the survey itself moved to the Form Builder (?f=dinein); see setupChoose.
+     v1.5: tapping a button on the choice screen is recorded as a hand-off, not a drop-off. */
   /* v1.3: the answer before the thank-you */
   .phone-hint{ width:100%; text-align:left; font-size:.76rem; color:var(--ink-muted); margin:-2px 2px 14px; }
   .phone-hint.bad{ color:#B91C1C; font-weight:600; }
@@ -741,6 +742,7 @@
        table's ?branch= on, exactly as the drop button does. To go back to the
        hand-built survey, upload dinein v1.3 again. */
     if(dineBtn) dineBtn.onclick = () => {
+      try { FA.handoff('dinein'); } catch(e){}
       const q = new URLSearchParams();
       q.set('f', 'dinein');
       const fromQR = new URLSearchParams(location.search).get('branch') || '';
@@ -749,6 +751,7 @@
       location.href = DROP_FORM_URL + '?' + q.toString();
     };
     if(dropBtn) dropBtn.onclick = () => {
+      try { FA.handoff('drop'); } catch(e){}
       const q = new URLSearchParams();
       q.set('f', DROP_FORM_ID);
       // Whatever we know about where they are, so the product form does not
@@ -932,7 +935,7 @@
       // Tracking must never delay or break a customer's feedback.
       try {
         const payload = JSON.stringify(body);
-        if (event === 'abandoned' && navigator.sendBeacon) {
+        if ((event === 'abandoned' || String(step || '').indexOf('handoff_') === 0) && navigator.sendBeacon) {
           navigator.sendBeacon(POST_URL, new Blob([payload], { type: 'application/json' }));
           return;
         }
@@ -952,6 +955,9 @@
       open(){ send('open', ''); },
       firstTap(){ send('first_tap', ''); },
       step(k){ send('step', k); },
+      // v1.5: the choice screen hands people on to another form. That is not
+      // a drop-off -- say so, and do not send "abandoned" as the page unloads.
+      handoff(k){ submitted = true; send('step', 'handoff_' + k); },
       submitted(){ submitted = true; send('submitted', currentKey || 'comments'); },
       back(){ backs++; },
       erased(){ erased++; },
